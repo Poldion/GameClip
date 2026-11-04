@@ -65,6 +65,8 @@ pub enum VideoEvent {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct VideoStats {
     pub ticks: u64,
+    /// Kodierte Bilder (Takte vor dem ersten WGC-Bild liefern keins).
+    pub encoded: u64,
     /// Takte ohne neues Bild (letztes Bild wiederholt).
     pub repeated: u64,
     /// Takte, die der Thread verpasst hat.
@@ -259,6 +261,7 @@ impl Pipeline {
         while !stop.load(Ordering::Relaxed) {
             let tick = pacer.wait()?;
             let mut repeated = false;
+            let mut encoded = false;
 
             if tick.n % u64::from(self.cfg.fps) == 0 {
                 self.gpu.check_removed()?;
@@ -290,6 +293,7 @@ impl Pipeline {
                 let keyframe = first || force_kf.swap(false, Ordering::Relaxed);
                 first = false;
                 self.encode(&frame.texture, tick.time_us, keyframe)?;
+                encoded = true;
                 drop(frame);
                 if !self.drain(sink)? {
                     break;
@@ -299,6 +303,7 @@ impl Pipeline {
             let counters = self.capture.counters();
             if let Ok(mut s) = stats.lock() {
                 s.ticks += 1;
+                s.encoded += u64::from(encoded);
                 s.skipped_ticks += tick.skipped;
                 s.repeated += u64::from(repeated);
                 s.captured = counters.arrived;

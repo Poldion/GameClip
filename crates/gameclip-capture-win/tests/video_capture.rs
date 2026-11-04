@@ -60,7 +60,15 @@ fn captures_primary_monitor_at_fixed_rate() {
         packets.len()
     );
     assert!(packets[0].keyframe, "erstes Paket ist ein Keyframe");
-    assert_eq!(packets.len() as u64, stats.ticks, "ein Paket je Takt");
+    assert_eq!(
+        packets.len() as u64,
+        stats.encoded,
+        "ein Paket je kodiertem Takt"
+    );
+    assert!(
+        stats.ticks - stats.encoded <= 3,
+        "höchstens 3 Takte vor dem ersten Bild"
+    );
 
     // Festes Raster: Abstände 16 666/16 667 µs, außer bei verpassten Takten (Vielfache).
     for w in packets.windows(2) {

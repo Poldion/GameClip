@@ -36,6 +36,9 @@ windows-core = "0.62"
 # Blockierendes `join()` für WinRT-IAsyncOperation (z. B. RequestAccessAsync).
 windows-future = "0.3"
 crossbeam-channel = "0.5"
+wasapi = "0.26"
+rubato = "5"
+audioadapter-buffers = "5"
 # FFmpeg 8.1 (Feature ffmpeg8 ist Standard); Linken über .cargo/config.toml.
 rsmpeg = "0.18"
 

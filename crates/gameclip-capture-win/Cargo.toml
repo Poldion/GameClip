@@ -6,7 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+audioadapter-buffers.workspace = true
 crossbeam-channel.workspace = true
+rubato.workspace = true
+wasapi.workspace = true
 gameclip-gpu.workspace = true
 gameclip-media.workspace = true
 rsmpeg.workspace = true

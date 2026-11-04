@@ -62,6 +62,11 @@ pub struct Pacer {
 impl Pacer {
     /// Takt 0 liegt bei „jetzt“.
     pub fn new(fps: u32) -> Result<Self> {
+        Self::with_start(fps, qpc_us())
+    }
+
+    /// Takt 0 liegt bei `start_us` (QPC); so teilen sich Mixer und Zeitachse einen Nullpunkt.
+    pub fn with_start(fps: u32, start_us: i64) -> Result<Self> {
         let timer = unsafe {
             CreateWaitableTimerExW(
                 None,
@@ -73,7 +78,7 @@ impl Pacer {
         Ok(Pacer {
             timer,
             fps,
-            start_us: qpc_us(),
+            start_us,
             n: 0,
         })
     }

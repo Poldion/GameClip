@@ -1216,6 +1216,14 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 *   **Änderungen:**
     *   `resample.rs`: `rubato` auf 48 kHz; Drift-Regler nach der Regel in „Audio-Pipeline“; Lücken mit Stille.
     *   `mixer.rs`: 10-ms-Blöcke, Gain je Quelle, Summe, Limiter (Look-ahead 5 ms, Schwelle −1 dBFS *(vorläufig)*), Stummschaltfenster für den eigenen Ton. Ausgabe an `audio_codec` für Mischung und Einzelspuren.
+    *   **Umgesetzt 2026-11:**
+        *   **Zeitachse:** Frames zu 48 kHz ab `AudioPipeline::start_us()` (QPC). WASAPI rechnet mit `autoconvert` selbst auf 48 kHz Float Stereo um, `rubato` dient nur dem Driftausgleich. `SourceTrack` legt jeden WASAPI-Block über seinen QPC-Zeitstempel ein. Abweichungen ab 20 ms zum Pufferende gelten als Lücke (mit Stille füllen) bzw. als Überlappung (abschneiden).
+        *   **Drift:** Resampler ist `rubato::Slip` mit fester Ausgabe von 480 Frames. Der Regler hält den mittleren Füllstand (gleitendes Mittel über 10 s) auf dem Wert nach 2 s Anlauf und verstellt das Verhältnis um höchstens ±0,1 %. Simuliert: Ein um 0,05 % schnelleres Gerät ergibt das Verhältnis 0,99949, ohne Unterlauf.
+        *   **Mixer:** eigener Thread im 10-ms-Takt (`Pacer::with_start(100, start_us)`), 100 ms hinter der Echtzeit. Der Limiter gibt Block k erst mit Blick auf Block k+1 aus. Die Einzelspuren laufen deshalb um denselben Block verzögert, und alle Spuren tragen dieselben Zeitstempel.
+        *   **Pegel:** `AudioEvent::Levels` alle 100 ms (System, Mikrofon) für `MicLevel`.
+        *   **Gemessen (2026-11):** Über 3 s kamen Mischung, System und Mikrofon mit je 138 Paketen an. Das erste Paket liegt genau 1024 Samples (AAC-Anlauf) vor dem Nullpunkt, die übrigen im festen Abstand von 21 333 µs. Prozess-Loopback mit Ausschluss des eigenen Prozesses liefert Systemton. `wasapi` liefert für Loopback gültige QPC-Zeitstempel; fehlt einer, gilt ersatzweise die Ankunftszeit minus Blockdauer.
+        *   **Offen:** Die Lage eines Testtons auf der Zeitachse ist nicht genau geprüft, weil auf dem Messrechner anderer Ton lief. Das braucht einen Ton mit Frequenzerkennung in S4. Ebenfalls offen sind das Neubinden des Mikrofons bei Gerätewechsel (`IMMNotificationClient`) und `discord.rs` (M2).
+        *   `mic::list_devices()` initialisiert COM selbst, denn ohne MTA schlägt die Geräteliste fehl (`CO_E_NOTINITIALIZED`).
 
 ##### 38. `crates/gameclip-capture-win/src/ring.rs` (Create)
 

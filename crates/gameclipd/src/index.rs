@@ -276,6 +276,86 @@ impl Index {
         })
     }
 
+    /// Alle Einträge aller Ordner.
+    pub fn list_all(&self) -> Result<Vec<ClipRow>> {
+        let mut all = self.list(FolderKind::Clips)?;
+        all.extend(self.list(FolderKind::Exports)?);
+        Ok(all)
+    }
+
+    pub fn find_by_path(&self, path: &Path) -> Result<Option<ClipRow>> {
+        self.read(|db| {
+            db.query_row(
+                "SELECT * FROM clips WHERE path = ?1",
+                params![path.to_string_lossy()],
+                row_to_clip,
+            )
+            .optional()
+        })
+    }
+
+    /// Die `ok`-Zeile mit diesem Tag (höchstens eine, Design „Eigentum“).
+    pub fn find_ok_by_tag(&self, tag_id: &str) -> Result<Option<ClipRow>> {
+        self.read(|db| {
+            db.query_row(
+                "SELECT * FROM clips WHERE tag_id = ?1 AND status = 'ok' LIMIT 1",
+                params![tag_id],
+                row_to_clip,
+            )
+            .optional()
+        })
+    }
+
+    /// Fertige Zeile direkt anlegen (Abgleich: übernommene oder fremde Dateien).
+    pub fn insert_row(&self, c: &ClipRow) -> Result<u32> {
+        let created = c
+            .created_at
+            .to_offset(time::UtcOffset::UTC)
+            .format(&Rfc3339)
+            .expect("RFC 3339");
+        self.write(|db| {
+            db.execute(
+                "INSERT INTO clips (tag_id, folder, path, size_bytes, created_at, duration_us,
+                                    starred, has_tracks, source_row_id, placeholder, status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    c.tag_id,
+                    folder_str(c.folder),
+                    c.path.to_string_lossy(),
+                    c.size_bytes as i64,
+                    created,
+                    c.duration_us as i64,
+                    c.starred,
+                    c.has_tracks,
+                    c.source_row_id,
+                    c.placeholder,
+                    status_str(c.status)
+                ],
+            )?;
+            Ok(db.last_insert_rowid() as u32)
+        })
+    }
+
+    pub fn update_file(&self, row_id: u32, path: &Path, size_bytes: u64) -> Result<()> {
+        self.write(|db| {
+            db.execute(
+                "UPDATE clips SET path = ?2, size_bytes = ?3, missing_count = 0 WHERE row_id = ?1",
+                params![row_id, path.to_string_lossy(), size_bytes as i64],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn set_missing(&self, row_id: u32, missing_count: u32) -> Result<()> {
+        self.write(|db| {
+            db.execute(
+                "UPDATE clips SET missing_count = ?2 WHERE row_id = ?1",
+                params![row_id, missing_count],
+            )?;
+            Ok(())
+        })
+    }
+
     /// Neuester gültiger Clip (Tray-Aktion „Letzten Clip kopieren“).
     pub fn latest_ok(&self, folder: FolderKind) -> Result<Option<ClipRow>> {
         Ok(self

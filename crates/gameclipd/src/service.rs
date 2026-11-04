@@ -176,6 +176,8 @@ struct Service {
     events: Broadcaster,
     jobs: Jobs,
     job_rx: Receiver<JobEvent>,
+    sound: crate::sound::SoundPlayer,
+    toast_failed: bool,
     /// Export aus der Tray-Aktion: nach Abschluss in die Zwischenablage (G1a, Größe 4).
     copy_after: Option<(u32, std::time::Instant)>,
     exit: bool,
@@ -240,6 +242,8 @@ impl Service {
             events,
             jobs,
             job_rx,
+            sound: crate::sound::SoundPlayer::new(),
+            toast_failed: false,
             copy_after: None,
             exit: false,
         })
@@ -257,6 +261,21 @@ impl Service {
         } else {
             StateEvent::HotkeyFailed
         });
+        for (dir, folder) in [
+            (self.paths.clips.clone(), FolderKind::Clips),
+            (self.paths.exports.clone(), FolderKind::Exports),
+        ] {
+            match crate::retention_exec::reconcile(
+                &self.index,
+                &self.paths,
+                &dir,
+                folder,
+                &crate::retention_exec::WinProbe,
+            ) {
+                Ok(s) => info!("Abgleich {folder:?}: {s:?}"),
+                Err(e) => warn!("Abgleich {folder:?}: {e}"),
+            }
+        }
         let started = self.start_recorder();
         self.feed(if started {
             StateEvent::PipelineReady
@@ -383,6 +402,23 @@ impl Service {
                         .unwrap_or_default()
                 );
                 self.last_clip = Some(s.path.clone());
+                let text = format!(
+                    "Clip gespeichert ({}, {})",
+                    crate::toast::format_duration(s.duration_us),
+                    crate::toast::format_size(s.size_bytes)
+                );
+                let detail = if s.truncated {
+                    "Clip verkürzt (Aufnahme neu gestartet)".to_string()
+                } else if s.tracks_error.is_some() {
+                    "Ohne Einzelspuren".to_string()
+                } else {
+                    s.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                };
+                self.toast(&text, &detail, Some(s.row_id));
+                self.enforce_limit(Some(s.row_id));
                 self.events.send(ServiceEvent::SaveCompleted {
                     clip_id: s.row_id,
                     path: s.path.to_string_lossy().into_owned(),
@@ -451,9 +487,17 @@ impl Service {
     fn on_job(&mut self, ev: JobEvent) {
         self.events.send(ev.to_service_event());
         match ev {
-            JobEvent::Completed { job_id, path, .. }
-                if self.copy_after.is_some_and(|(id, _)| id == job_id) =>
-            {
+            JobEvent::Completed {
+                job_id, clip_id, ..
+            } if !self.copy_after.is_some_and(|(id, _)| id == job_id) => {
+                self.enforce_limit(Some(clip_id));
+            }
+            JobEvent::Completed {
+                job_id,
+                clip_id,
+                path,
+            } if self.copy_after.is_some_and(|(id, _)| id == job_id) => {
+                self.enforce_limit(Some(clip_id));
                 let (_, started) = self.copy_after.take().expect("geprüft");
                 match crate::clipboard::copy_file(&path) {
                     Ok(()) => info!(
@@ -470,6 +514,36 @@ impl Service {
                 self.copy_after = None;
             }
             _ => {}
+        }
+    }
+
+    fn toast(&mut self, title: &str, text: &str, reveal: Option<u32>) {
+        if let Err(e) = crate::toast::show(title, text, reveal) {
+            // Ohne Paket-Identität verwirft Windows Toasts; einmal melden genügt.
+            if !self.toast_failed {
+                warn!("Benachrichtigung nicht anzeigbar (ohne MSIX erwartet): {e}");
+                self.toast_failed = true;
+            }
+        }
+    }
+
+    fn enforce_limit(&mut self, protect: Option<u32>) {
+        match crate::retention_exec::enforce(
+            &self.index,
+            &self.paths,
+            &self.settings.storage,
+            protect,
+            &crate::retention_exec::WinProbe,
+        ) {
+            Ok(done) => {
+                for d in done.deleted {
+                    self.events.send(ServiceEvent::ClipDeleted {
+                        clip_id: d.row_id,
+                        folder: d.folder,
+                    });
+                }
+            }
+            Err(e) => warn!("Speicherlimit: {e}"),
         }
     }
 
@@ -555,8 +629,17 @@ impl Service {
             }
             Effect::BeginSave => self.begin_save(),
             Effect::QueueSave => {}
-            Effect::PlaySound(s) => info!("Ton: {s:?}"),
-            Effect::Notify(n) => info!("Benachrichtigung: {n:?}"),
+            Effect::PlaySound(s) => {
+                if self.settings.sound.enabled {
+                    // Ausgeschlossen ist der eigene Prozessbaum: der Ton landet nicht im Clip (D26).
+                    // Mit Discord-Ausschluss (M2) kommt hier `mute_system` für das Fenster dazu.
+                    let _ = self.sound.play(*s, self.settings.sound.volume);
+                }
+            }
+            Effect::Notify(n) => {
+                let (title, text) = notice_text(n);
+                self.toast(title, &text, None);
+            }
             Effect::ScheduleRecovery(d) => {
                 self.recovery = Some(crossbeam_channel::after(*d));
             }
@@ -607,6 +690,32 @@ impl Service {
         if self.save_tx.send(job).is_err() {
             self.feed(StateEvent::SaveFinished(Err(SaveError::EncoderFailed)));
         }
+    }
+}
+
+fn notice_text(n: &gameclip_core::state::Notice) -> (&'static str, String) {
+    use gameclip_core::state::Notice;
+    match n {
+        Notice::SaveFailed(e) => (
+            "Clip nicht gespeichert",
+            match e {
+                SaveError::DiskFull => "Kein Platz auf dem Laufwerk".into(),
+                SaveError::FolderMissing => "Clip-Ordner fehlt oder ist schreibgeschützt".into(),
+                SaveError::BufferEmpty => "Noch nichts aufgenommen".into(),
+                SaveError::EncoderFailed => "Fehler beim Schreiben".into(),
+                SaveError::Timeout => "Aufnahme hängt".into(),
+            },
+        ),
+        Notice::HotkeyInactive => (
+            "Hotkey inaktiv",
+            "Die Taste ist von einem anderen Programm belegt".into(),
+        ),
+        Notice::CpuEncoder => ("Aufnahme über CPU", "Kein Hardware-Encoder nutzbar".into()),
+        Notice::Failed => (
+            "Aufnahme gestoppt",
+            "GameClip konnte die Aufnahme nicht starten".into(),
+        ),
+        Notice::NotReady => ("Noch nicht bereit", "Die Aufnahme startet gerade".into()),
     }
 }
 

@@ -22,7 +22,10 @@ tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 tray-icon.workspace = true
 uuid.workspace = true
+wasapi.workspace = true
 windows = { workspace = true, features = [
+    "Data_Xml_Dom",
+    "UI_Notifications",
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",

@@ -579,6 +579,7 @@ dependencies = [
  "tracing-subscriber",
  "tray-icon",
  "uuid",
+ "wasapi",
  "windows",
  "windows-core",
 ]

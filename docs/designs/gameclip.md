@@ -1361,6 +1361,9 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 ##### 50. `crates/gameclipd/src/sound.rs`, `assets/sounds/success.wav`, `assets/sounds/failure.wav` (Create)
 
 *   **Änderungen:** Wiedergabe über WASAPI mit `sound.volume`; Beginn und Dauer an den Mixer, wenn die Stummschaltung des eigenen Tons aktiv ist. Die WAV-Dateien sind selbst erstellt und stehen unter CC0-1.0.
+    *   **Umgesetzt 2026-11:** Statt WAV-Dateien erzeugt `sound.rs` die Töne im Code: Erfolg 880 → 1320 Hz, Fehler 440 → 311 Hz, mit 8 ms Ein- und Ausklingen. So gibt es keine Binärdateien und keine Lizenzfrage. `play` liefert Beginn und Dauer (+100 ms Reserve) für `mute_system`. In M0 schließt „System“ den eigenen Prozessbaum aus, die Stummschaltung wird erst mit dem Discord-Ausschluss (M2) gebraucht.
+    *   **Toasts (Datei 52):** über `GAMECLIP_AUMID` bzw. `<APP_ID>!Service`. Ohne Paket meldete `Show` 2026-11 keinen Fehler; ob der Toast erscheint, prüft S1 im MSIX.
+    *   **Speicherlimit und Abgleich (Dateien 45, 47):** `retention_exec::{reconcile, enforce}` mit `FileProbe` (Windows: `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`). Der Abgleich läuft beim Start für beide Ordner, das Limit nach jedem Clip und Export. Dateien ohne `gameclip_id` werden als `foreign` mit leerem Tag geführt. `adopt` folgt mit der Galerie (M3). Alle Fälle aus Datei 55 sind getestet.
 
 ##### 51. `crates/gameclipd/src/tray.rs` (Create)
 

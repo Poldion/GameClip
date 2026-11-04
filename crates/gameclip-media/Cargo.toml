@@ -1,0 +1,20 @@
+[package]
+name = "gameclip-media"
+description = "FFmpeg-Anbindung: Hardware-Frames, Encoder-Prüfung und Ausweichkette, Muxer, Dekoder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+gameclip-gpu.workspace = true
+rsmpeg.workspace = true
+thiserror.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi_Common",
+] }
+windows-core.workspace = true
+
+# Tests laden die FFmpeg-DLLs aus third_party/ffmpeg/bin; das Verzeichnis muss in PATH stehen
+# (fetch-ffmpeg.ps1 trägt es in CI ein).

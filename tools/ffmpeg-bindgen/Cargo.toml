@@ -1,0 +1,16 @@
+[package]
+name = "ffmpeg-bindgen"
+description = "Erzeugt third_party/ffmpeg/binding.rs für rusty_ffmpeg (FFMPEG_BINDING_PATH)"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Eigener Workspace: das Werkzeug läuft nur in fetch-ffmpeg.ps1 und soll den normalen Build
+# nicht um bindgen verlängern.
+[workspace]
+
+[dependencies]
+# rusty_ffmpeg 0.16.7 (über rsmpeg 0.18) bringt bindgen 0.71.1 mit. Das erzeugt unter
+# libclang 23 Strukturen mit anonymen Unions leer (AVOption, AVFormatContext, …); 0.73 nicht.
+bindgen = "=0.73.2"

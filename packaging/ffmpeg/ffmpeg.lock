@@ -1,0 +1,6 @@
+# FFmpeg-Build für Windows, fest gepinnt. Von fetch-ffmpeg.ps1 gelesen (Schlüssel = Wert).
+# Datierter Autobuild statt "latest": "latest" wird täglich neu gebaut, die Prüfsumme wäre nicht stabil.
+version = 8.1.3-34-ga35157abb9
+url = https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-04-12-51/ffmpeg-n8.1.3-34-ga35157abb9-win64-gpl-shared-8.1.zip
+sha256 = 5d9b0d43d917a13ebf9025bdbc11f1599bb64327cc8b3bb373aafe894065a6b1
+source = https://github.com/FFmpeg/FFmpeg/archive/a35157abb9.tar.gz

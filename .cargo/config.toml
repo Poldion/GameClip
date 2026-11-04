@@ -1,3 +1,14 @@
 [env]
 # ts-rs schreibt die TypeScript-Typen des Protokolls direkt ins Frontend (Design, Datei 3).
 TS_RS_EXPORT_DIR = { value = "apps/gameclip-ui/src/generated", relative = true }
+
+# FFmpeg für rusty_ffmpeg (über rsmpeg): Header für bindgen, Import-Bibliotheken (*.lib) zum
+# dynamischen Linken. Die DLLs liegen in third_party/ffmpeg/bin; packaging/ffmpeg/fetch-ffmpeg.ps1
+# legt alles an. FFMPEG_DLL_PATH bewusst nicht: mit einer Datei linkt rusty_ffmpeg nur diese eine.
+FFMPEG_INCLUDE_DIR = { value = "third_party/ffmpeg/include", relative = true }
+FFMPEG_LIBS_DIR = { value = "third_party/ffmpeg/lib", relative = true }
+FFMPEG_LINK_MODE = "dynamic"
+# Fertige Bindings statt bindgen im Build-Skript: rusty_ffmpeg 0.16.7 bringt bindgen 0.71.1 mit,
+# das unter libclang 23 Strukturen mit anonymen Unions leer erzeugt. fetch-ffmpeg.ps1 erzeugt die
+# Datei mit tools/ffmpeg-bindgen (bindgen 0.73).
+FFMPEG_BINDING_PATH = { value = "third_party/ffmpeg/binding.rs", relative = true }

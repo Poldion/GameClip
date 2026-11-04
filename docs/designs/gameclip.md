@@ -108,7 +108,7 @@ Die mit *vorläufig* markierten Zahlen werden auf einem benannten Referenzrechne
 *   **Q2 – MSIX-Publisher.** Paketformat (MSIX) und App-ID (`io.github.poldion.GameClip`) sind entschieden. Der `Publisher` im Manifest muss genau dem Subjekt des Signaturzertifikats entsprechen. Er steht erst fest, wenn das Zertifikat da ist (Q14), und darf sich danach nicht mehr ändern, sonst gilt jedes Update als neue App.
 *   **Q3 – Mindest-Build von Windows 11.** Zum Beispiel 24H2 (26100). Hängt davon ab, ab wann `MinUpdateInterval` und die randlose Aufnahme verfügbar sind. Recherche vor S1.
 *   **Q4 – Exklusives Vollbild.** Liefert WGC dort ein Bild? Wird DDA als Ausweg gebraucht? Antwort aus S1 (eigenes Kriterium dort).
-*   **Q5 – Media Foundation als Zwischenstufe.** Gibt es Hardware, auf der NVENC/AMF/QSV versagen, Media Foundation aber funktioniert? Antwort aus S2 (eigenes Kriterium dort). Mit FFmpeg 7.1 nimmt `h264_mf` vermutlich keine D3D11-Frames an (prüfen); die Stufe bräuchte dann eine Kopie in den Hauptspeicher.
+*   **Q5 – Media Foundation als Zwischenstufe.** Gibt es Hardware, auf der NVENC/AMF/QSV versagen, Media Foundation aber funktioniert? Antwort aus S2 (eigenes Kriterium dort). Mit FFmpeg 8.1 nimmt `h264_mf` vermutlich keine D3D11-Frames an (prüfen); die Stufe bräuchte dann eine Kopie in den Hauptspeicher.
 *   **Q6 – Sieht das Spiel die Hotkey-Taste noch?** Bestimmt den Warnungstext im Auswahldialog. Antwort aus S8.
 *   **Q7 – Smart-Cut.** Ist das vollständige Neukodieren beim Kürzen zu langsam (Ziel: 60-s-Clip in ≤ 15 s, *vorläufig*)? Nur dann wird Smart-Cut nachgerüstet. Antwort aus S9.
 *   **Q11 – Mehrere ausgeschlossene Prozessbäume pro Loopback-Strom.** Erlaubt Windows das? Bis zur Antwort aus S4 gilt die Stummschaltung des eigenen Tons (siehe Audio-Pipeline).
@@ -504,7 +504,7 @@ Durchgesetzt wird das so:
 
 ### Abhängigkeiten und Lizenz
 
-*   **FFmpeg:** FFmpeg 7.1.x als GPL-Shared-Build, mitgeliefert als DLLs, mit Quellcode-Angebot. Ohne `--enable-nonfree`, ohne fdk-aac. Anbindung über `rsmpeg`. Weil BtbN alte Release-Dateien entfernt, wird das gewählte Archiv als Release-Datei im eigenen Repository gespiegelt (zugleich Quellcode-Angebot). Lehnt die Signatur-Stelle vorgebaute Binärdateien ab (Q14), wird FFmpeg in CI aus der festen Quellversion gebaut. Skaliert wird mit dem D3D11-VideoProcessor aus `gameclip-gpu`, nicht mit FFmpeg-Filtern.
+*   **FFmpeg:** FFmpeg 8.1.x als GPL-Shared-Build (gepinnt in `packaging/ffmpeg/ffmpeg.lock`), mitgeliefert als DLLs, mit Quellcode-Angebot. Ohne `--enable-nonfree`, ohne fdk-aac. Anbindung über `rsmpeg`. Weil BtbN alte Release-Dateien entfernt, wird das gewählte Archiv als Release-Datei im eigenen Repository gespiegelt (zugleich Quellcode-Angebot). Lehnt die Signatur-Stelle vorgebaute Binärdateien ab (Q14), wird FFmpeg in CI aus der festen Quellversion gebaut. Skaliert wird mit dem D3D11-VideoProcessor aus `gameclip-gpu`, nicht mit FFmpeg-Filtern.
 *   **Rust-Bibliotheken (Q16):** Versionen und Features in Datei 1 des Umsetzungsplans. `windows-capture` dient nur als Vorlage, weil die Pipeline ein eigenes, mit FFmpeg geteiltes D3D11-Gerät braucht. `global-hotkey` wird nicht genutzt, weil `SuspendHotkey`, `TestRegister` und der QPC-Zeitstempel des Tastendrucks einen eigenen Hotkey-Thread brauchen.
 *   **Lizenz des Projekts:** GPL-3.0-or-later.
 *   **Signatur:** SignPath Foundation (Q14); Ausweg siehe Risiko R3. Für Entwicklungs-Builds ein selbst erzeugtes Testzertifikat.
@@ -847,7 +847,7 @@ Gespeichert in `%APPDATA%\GameClip\settings.toml`. Typ `Settings` in `crates/gam
 | `sound.enabled` | `bool` | – | `true` | – | nein |
 | `sound.volume` | `f32` | 0,0–1,0 | 0,7 | – | nein |
 
-*   Unbekannte Schlüssel werden in `extra: toml::Table` aufbewahrt und unverändert zurückgeschrieben. `extra` wird nicht über IPC übertragen (`#[serde(skip)]` im IPC-Typ, `#[ts(skip)]`).
+*   Unbekannte Schlüssel bleiben erhalten: `merge_into(existing_toml, &settings)` schreibt die bekannten Felder in die vorhandene Datei als `toml::Table` und lässt alle anderen Schlüssel stehen (Option-Felder, die auf `None` stehen, werden entfernt). Der IPC-Typ enthält deshalb keine unbekannten Schlüssel. (Umgesetzt 2026-11 statt des früher geplanten Feldes `extra`.)
 *   `validate()` liefert `Vec<FieldError { key, reason }>`; `SetSettings` antwortet bei Fehlern mit `InvalidArgument` und dieser Liste im Feld `details`.
 *   **Autostart** ist keine Einstellung in der Datei. Der Schalter in der Oberfläche steuert direkt den MSIX-StartupTask (`STARTUP_TASK_ID`).
 
@@ -903,8 +903,8 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
         | Crate | Version | Features | Genutzt von |
         | --- | --- | --- | --- |
-        | `windows` | 0.61 | je Crate die genutzten Module: `Win32_Foundation`, `Win32_Graphics_Direct3D`, `Win32_Graphics_Direct3D11`, `Win32_Graphics_Dxgi`, `Win32_Graphics_Dxgi_Common`, `Win32_Graphics_Imaging`, `Graphics_Capture`, `Graphics_DirectX_Direct3D11`, `Win32_System_WinRT_Direct3D11`, `Win32_System_WinRT_Graphics_Capture`, `Win32_Media_Audio`, `Win32_System_Pipes`, `Win32_Security`, `Win32_Security_Authorization`, `Win32_Storage_FileSystem`, `Win32_System_Console`, `Win32_System_LibraryLoader`, `Win32_UI_WindowsAndMessaging`, `Win32_UI_Input_KeyboardAndMouse`, `Win32_UI_Shell`, `Win32_UI_Shell_Common`, `Win32_System_Com`, `Win32_System_Diagnostics_ToolHelp`, `Win32_System_Threading`, `Win32_System_JobObjects`, `Win32_System_RemoteDesktop`, `ApplicationModel`, `UI_Notifications`, `Data_Xml_Dom` | gpu, media, capture-win, gameclipd, worker, ui-platform |
-        | `rsmpeg` | 0.16 | `ffmpeg7_1` | media |
+        | `windows` / `windows-core` | 0.62 | je Crate die genutzten Module: `Win32_Foundation`, `Win32_Graphics_Direct3D`, `Win32_Graphics_Direct3D11`, `Win32_Graphics_Dxgi`, `Win32_Graphics_Dxgi_Common`, `Win32_Graphics_Imaging`, `Graphics_Capture`, `Graphics_DirectX_Direct3D11`, `Win32_System_WinRT_Direct3D11`, `Win32_System_WinRT_Graphics_Capture`, `Win32_Media_Audio`, `Win32_System_Pipes`, `Win32_Security`, `Win32_Security_Authorization`, `Win32_Storage_FileSystem`, `Win32_System_Console`, `Win32_System_LibraryLoader`, `Win32_UI_WindowsAndMessaging`, `Win32_UI_Input_KeyboardAndMouse`, `Win32_UI_Shell`, `Win32_UI_Shell_Common`, `Win32_System_Com`, `Win32_System_Diagnostics_ToolHelp`, `Win32_System_Threading`, `Win32_System_JobObjects`, `Win32_System_RemoteDesktop`, `ApplicationModel`, `UI_Notifications`, `Data_Xml_Dom` | gpu, media, capture-win, gameclipd, worker, ui-platform |
+        | `rsmpeg` | 0.18 | `ffmpeg8` (Standard) | media |
         | `wasapi` | 0.19 | – | capture-win |
         | `rubato` | 0.16 | – | capture-win |
         | `rusqlite` | 0.36 | `bundled` | gameclipd |
@@ -933,12 +933,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 ##### 2. `rust-toolchain.toml` (Create)
 
-*   **Änderungen:** `channel = "1.88.0"`, Ziele `x86_64-pc-windows-msvc` und `x86_64-unknown-linux-gnu`, Komponenten `clippy`, `rustfmt`, `llvm-tools-preview`.
+*   **Änderungen:** `channel = "1.99.1"`, Ziele `x86_64-pc-windows-msvc` und `x86_64-unknown-linux-gnu`, Komponenten `clippy`, `rustfmt`, `llvm-tools-preview`.
 *   **Begründung:** Reproduzierbare Builds; das Linux-Ziel für den Grenz-Job; `llvm-tools` für die Zeilenabdeckung.
 
 ##### 3. `.cargo/config.toml` (Create)
 
-*   **Änderungen:** `[env]` mit `FFMPEG_INCLUDE_DIR = { value = "third_party/ffmpeg/include", relative = true }`, `FFMPEG_DLL_PATH = { value = "third_party/ffmpeg/bin/avcodec-61.dll", relative = true }` (Variablen von `rusty_ffmpeg`, das `rsmpeg` nutzt; prüfen, Q16) und `TS_RS_EXPORT_DIR = { value = "apps/gameclip-ui/src/generated", relative = true }`. Die Typen tragen dann `#[ts(export)]` ohne eigenes `export_to`.
+*   **Änderungen:** `[env]` mit `FFMPEG_INCLUDE_DIR = { value = "third_party/ffmpeg/include", relative = true }`, `FFMPEG_LIBS_DIR = { value = "third_party/ffmpeg/lib", relative = true }` und `FFMPEG_LINK_MODE = "dynamic"` (Variablen von `rusty_ffmpeg` 0.17, das `rsmpeg` nutzt; geprüft 2026-11: `FFMPEG_DLL_PATH` mit einer Datei linkt nur diese eine Bibliothek, deshalb das Verzeichnis der Import-Bibliotheken). bindgen braucht `libclang` (`LIBCLANG_PATH`); die mitgelieferten fertigen Bindings von `rusty_ffmpeg` sind unter Linux erzeugt (`c_long` = 64 Bit) und für Windows unbrauchbar. `hwcontext_d3d11va.h` fehlt in der Header-Liste von `rusty_ffmpeg`; `gameclip-media` spiegelt `AVD3D11VADeviceContext` und `AVD3D11VAFramesContext` selbst als `#[repr(C)]` und `TS_RS_EXPORT_DIR = { value = "apps/gameclip-ui/src/generated", relative = true }`. Die Typen tragen dann `#[ts(export)]` ohne eigenes `export_to`.
 *   **Begründung:** Ein `build.rs` kann keine Umgebungsvariablen für das Build-Skript einer Abhängigkeit setzen; `[env]` kann das.
 
 ##### 4. `deny.toml` (Create)
@@ -1023,7 +1023,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 ##### 16. `crates/gameclip-core/src/settings.rs` (Create)
 
-*   **Änderungen:** Struktur `Settings` genau nach der Tabelle „Einstellungen“, mit `Default`, `validate()`, `fn pipeline_changed(&Settings, &Settings) -> bool` und dem Feld `extra`. Lesen: Datei fehlt → Standard; `schema_version` > 1 → `ReadOnly`. Schreiben über temporäre Datei und Umbenennen.
+*   **Änderungen:** Struktur `Settings` genau nach der Tabelle „Einstellungen“, mit `Default`, `validate()`, `fn pipeline_changed(&Settings, &Settings) -> bool` und `merge_into` (siehe „Einstellungen“). Lesen: Datei fehlt → Standard; `schema_version` > 1 → `ReadOnly`. Schreiben über temporäre Datei und Umbenennen.
 *   **Begründung:** Eine Quelle für Schlüssel, Typen, Standardwerte und Prüfregeln.
 
 ##### 17. `crates/gameclip-core/src/forecast.rs` (Create)
@@ -1145,7 +1145,8 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 *   **Änderungen:**
     *   `device.rs`: Adapter des gewählten Monitors (`IDXGIOutput` → `IDXGIAdapter1`, LUID); `ID3D11Device` mit `VIDEO_SUPPORT | BGRA_SUPPORT`, Multithread-Schutz an; WinRT-Gerät für WGC über `CreateDirect3D11DeviceFromDXGIDevice`; Geräteverlust über `GetDeviceRemovedReason`.
-    *   `convert.rs`: `struct Converter` mit `fn new(device, in_format: InFormat { Bgra, Nv12 }, in_size, out_size) -> Self` und `fn run(&self, src: TexRef, dst: TexRef)` mit `struct TexRef<'a> { tex: &'a ID3D11Texture2D, array_slice: u32 }`. `ID3D11VideoProcessor`; Eingabe BGRA (Aufnahme) oder NV12 (Worker, aus d3d11va), Ausgabe NV12, BT.709 begrenzter Bereich, Seitenverhältnis mit Rand. Eingabe-View mit `D3D11_VPIV_DIMENSION_TEXTURE2D` und `ArraySlice`, Ausgabe-View mit `D3D11_VPOV_DIMENSION_TEXTURE2DARRAY` und `FirstArraySlice`, weil FFmpegs Frame-Pools Texture-Arrays sind. Die Zieltextur muss `D3D11_BIND_RENDER_TARGET` tragen.
+    *   **Gemessen auf AMD (2026-11):** Eine YCbCr-Hintergrundfarbe für den Rand liest der Treiber als RGB (Y = 105 statt 16). Der Rand wird deshalb als RGB-Schwarz gesetzt.
+*   `convert.rs`: `struct Converter` mit `fn new(device, in_format: InFormat { Bgra, Nv12 }, in_size, out_size) -> Self` und `fn run(&self, src: TexRef, dst: TexRef)` mit `struct TexRef<'a> { tex: &'a ID3D11Texture2D, array_slice: u32 }`. `ID3D11VideoProcessor`; Eingabe BGRA (Aufnahme) oder NV12 (Worker, aus d3d11va), Ausgabe NV12, BT.709 begrenzter Bereich, Seitenverhältnis mit Rand. Eingabe-View mit `D3D11_VPIV_DIMENSION_TEXTURE2D` und `ArraySlice`, Ausgabe-View mit `D3D11_VPOV_DIMENSION_TEXTURE2DARRAY` und `FirstArraySlice`, weil FFmpegs Frame-Pools Texture-Arrays sind. Die Zieltextur muss `D3D11_BIND_RENDER_TARGET` tragen.
     *   `hdr.rs`: `IDXGIOutput6::GetDesc1`; HDR aktiv, wenn `ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020`.
     *   Kein Programm linkt Media Foundation zur Ladezeit (siehe Datei 58, `media.rs`). In S2 wird mit `dumpbin /dependents` geprüft, ob die FFmpeg-DLLs `mfplat.dll` importieren; falls ja, wird ein FFmpeg-Build ohne `--enable-mediafoundation` gewählt.
 *   **Begründung:** Gemeinsam für Aufnahme und Worker, ohne dass der Worker am Aufnahme-Crate hängt.
@@ -1155,11 +1156,11 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 ##### 27. `crates/gameclip-media/Cargo.toml`, `src/lib.rs`, `src/hwdevice.rs`, `src/encoder.rs` (Create)
 
 *   **Änderungen:**
-    *   `hwdevice.rs`: `AVHWDeviceContext` (D3D11VA) aus dem vorhandenen `ID3D11Device`; `AVHWFramesContext` NV12 mit `BindFlags = D3D11_BIND_RENDER_TARGET`, `MiscFlags = 0`, `initial_pool_size = 16`. FFmpeg legt dafür **ein** Texture-Array mit 16 Einträgen an; jedes Frame verweist mit `data[1]` auf seinen Index, den `Converter::run` als `array_slice` bekommt. Für QSV wird daraus ein Kontext abgeleitet (braucht den festen Pool). In S2 wird das je Hersteller geprüft.
+    *   `hwdevice.rs`: `AVHWDeviceContext` (D3D11VA) aus dem vorhandenen `ID3D11Device`; `AVHWFramesContext` NV12 mit `BindFlags = D3D11_BIND_RENDER_TARGET`, `MiscFlags = 0`, `initial_pool_size = 0` (dynamischer Pool, eine Einzeltextur je Frame). **Gemessen auf AMD RX 6750 XT (2026-11):** NV12-Texture-Arrays lehnt der Treiber mit `BIND_RENDER_TARGET` ab (`E_INVALIDARG`), sie gehen nur mit `BIND_DECODER`. Ziele des `Converter` sind deshalb immer Einzeltexturen; Texture-Arrays kommen nur als *Eingabe* vor (Decoder-Frames im Worker, `array_slice`). QSV braucht für abgeleitete Kontexte einen festen Pool; ob QSV mit eigenen Einzeltexturen arbeitet, klärt S2 auf Intel-Hardware.
     *   Jeder Prozess (Dienst, Worker) besitzt seinen eigenen Geräte- und Frames-Kontext; der Worker legt seinen für die Ausgabegröße des Exports an.
-    *   `encoder.rs`: `fn probe(adapter_luid, w, h, fps, bps, profile: EncodeProfile) -> Vec<EncoderCandidate { name, ok, reason }>` mit echter Testsitzung über 10 Bilder. Reihenfolge: Hersteller-Encoder der Monitor-GPU, `h264_mf` nur mit Cargo-Feature `media-foundation` (nach S2), `libx264`.
+    *   `encoder.rs`: `fn probe(gpu: &GpuDevice, cfg: &EncoderConfig { width, height, fps, bitrate_bps, profile }) -> Vec<EncoderCandidate { name, ok, reason }>` mit echter Testsitzung über 10 Bilder (umgesetzt 2026-11 mit `&GpuDevice` statt `adapter_luid`: der Dienst hat das Gerät schon; der Worker erzeugt es aus der LUID über `gameclip-gpu`). Zeitbasis aller Encoder 1/1 000 000 (µs). **Gemessen auf AMD RX 6750 XT (2026-11):** `h264_amf` mit D3D11-Frames aus dem dynamischen Pool läuft; ein erzwungenes IDR mitten in der GOP kommt als Keyframe-Paket an; keine B-Frames, Pakete in Anzeigereihenfolge. Reihenfolge: Hersteller-Encoder der Monitor-GPU, `h264_mf` nur mit Cargo-Feature `media-foundation` (nach S2), `libx264`.
     *   Gemeinsame Optionen: Profil `high`, `g = fps`, `bf = 0`, geschlossene GOP, `maxrate = bitrate`, `bufsize = bitrate`.
-    *   **Profil `Capture`:** NVENC `preset p4`, `tune ll`, `rc cbr`, `forced-idr 1`; AMF `usage lowlatency`, `rc cbr`, `forced_idr 1`; QSV `preset medium`, Rate-Control CBR, `forced_idr 1` (Optionen gegen FFmpeg 7.1 in S2 prüfen); x264 `preset superfast`, `tune zerolatency`.
+    *   **Profil `Capture`:** NVENC `preset p4`, `tune ll`, `rc cbr`, `forced-idr 1`; AMF `usage lowlatency`, `rc cbr`, `forced_idr 1`; QSV `preset medium`, Rate-Control CBR, `forced_idr 1` (Optionen gegen FFmpeg 8.1 in S2 prüfen; AMF auf RX 6750 XT 2026-11 mit `ffmpeg.exe` und D3D11-Frames geprüft: angenommen); x264 `preset superfast`, `tune zerolatency`.
     *   **Profil `Export`:** NVENC `preset p5`, `rc vbr`; AMF `usage transcoding`, `rc vbr_peak`; QSV `preset medium`; x264 `preset veryfast` ohne `tune`.
     *   Keyframe auf Anforderung: `AVFrame.pict_type = AV_PICTURE_TYPE_I` beim nächsten Bild; mit `forced-idr`/`forced_idr` wird daraus ein IDR. Jeder Schnappschuss und jede Lücke beginnt damit auf einem IDR, weil die regulären Keyframes ebenfalls IDR sind (geschlossene GOP).
 
@@ -1453,7 +1454,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 ##### 70. `packaging/ffmpeg/fetch-ffmpeg.ps1`, `packaging/ffmpeg/ffmpeg.lock`, `packaging/licenses.ps1` (Create)
 
-*   **Änderungen:** `ffmpeg.lock` enthält URL des gespiegelten Archivs (Release-Datei im eigenen Repository, ursprünglich BtbN `ffmpeg-n7.1-latest-win64-gpl-shared-7.1`), SHA-256 und URL des Quellarchivs. Das Skript lädt, prüft die Prüfsumme, entpackt nach `third_party/ffmpeg/` (per `.gitignore` ausgeschlossen) und ergänzt in CI `PATH` um `third_party/ffmpeg/bin`. `licenses.ps1` fügt npm- und FFmpeg-Lizenzen an `THIRD_PARTY_LICENSES.md` an.
+*   **Änderungen:** `ffmpeg.lock` enthält URL des gespiegelten Archivs (Release-Datei im eigenen Repository, ursprünglich BtbN, datierter Autobuild `autobuild-2026-11-04-12-51`, Datei `ffmpeg-n8.1.3-34-ga35157abb9-win64-gpl-shared-8.1.zip`; BtbN bietet keinen 7.1-Build mehr an, und `latest` wird täglich neu gebaut), SHA-256 und URL des Quellarchivs. Das Skript lädt, prüft die Prüfsumme, entpackt nach `third_party/ffmpeg/` (per `.gitignore` ausgeschlossen), erzeugt mit `tools/ffmpeg-bindgen` (eigener Workspace, bindgen 0.73) die Datei `third_party/ffmpeg/binding.rs` für `FFMPEG_BINDING_PATH` und ergänzt in CI `PATH` um `third_party/ffmpeg/bin`. `licenses.ps1` fügt npm- und FFmpeg-Lizenzen an `THIRD_PARTY_LICENSES.md` an.
 
 ##### 71. `packaging/assets/*.png` (Create)
 

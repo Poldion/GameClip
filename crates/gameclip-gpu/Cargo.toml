@@ -1,0 +1,20 @@
+[package]
+name = "gameclip-gpu"
+description = "D3D11-Gerät, Adapterwahl und VideoProcessor (BGRA/NV12 → NV12) für Aufnahme und Worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+thiserror.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_WinRT_Direct3D11",
+    "Graphics_DirectX_Direct3D11",
+] }
+windows-core.workspace = true

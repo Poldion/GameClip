@@ -1,0 +1,10 @@
+[package]
+name = "gameclip-testsupport"
+description = "Testquellen (nummerierte Bilder, Sinuston) für Tests von media, worker und gameclipd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rsmpeg.workspace = true

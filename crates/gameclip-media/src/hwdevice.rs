@@ -119,9 +119,16 @@ pub struct HwFrame {
 impl HwFrame {
     /// Textur und Array-Index; geliehen, solange das Frame lebt.
     pub fn texture(&self) -> Result<(&ID3D11Texture2D, u32)> {
-        let raw = &self.frame.data[0];
-        let tex = unsafe { ID3D11Texture2D::from_raw_borrowed(&*(raw as *const *mut u8).cast()) }
-            .ok_or(MediaError::NoTexture)?;
-        Ok((tex, self.frame.data[1] as usize as u32))
+        frame_texture(&self.frame)
     }
+}
+
+/// Textur und Array-Index eines D3D11-Frames (`data[0]`, `data[1]`), geliehen vom Frame.
+pub(crate) fn frame_texture(frame: &AVFrame) -> Result<(&ID3D11Texture2D, u32)> {
+    if frame.format != ffi::AV_PIX_FMT_D3D11 {
+        return Err(MediaError::NoTexture);
+    }
+    let raw = &frame.data[0] as *const *mut u8 as *const *mut c_void;
+    let tex = unsafe { ID3D11Texture2D::from_raw_borrowed(&*raw) }.ok_or(MediaError::NoTexture)?;
+    Ok((tex, frame.data[1] as usize as u32))
 }

@@ -207,7 +207,9 @@ name = "gameclip-media"
 version = "0.1.0"
 dependencies = [
  "gameclip-gpu",
+ "gameclip-testsupport",
  "rsmpeg",
+ "serde_json",
  "thiserror",
  "windows",
  "windows-core",
@@ -222,6 +224,13 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ts-rs",
+]
+
+[[package]]
+name = "gameclip-testsupport"
+version = "0.1.0"
+dependencies = [
+ "rsmpeg",
 ]
 
 [[package]]

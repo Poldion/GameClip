@@ -18,3 +18,6 @@ windows-core.workspace = true
 
 # Tests laden die FFmpeg-DLLs aus third_party/ffmpeg/bin; das Verzeichnis muss in PATH stehen
 # (fetch-ffmpeg.ps1 trägt es in CI ein).
+[dev-dependencies]
+gameclip-testsupport.workspace = true
+serde_json.workspace = true

@@ -71,6 +71,7 @@ fn evicts_only_whole_gops_by_time() {
     feed(&r, 0, 10 * SECOND, 200);
     let s = r.snapshot(0, i64::MAX);
     assert!(s.video[0].keyframe, "älteste Bildgruppe vollständig");
+    assert!(!s.truncated, "Puffer nur noch nicht voll: nicht verkürzt");
     let newest = s.video.last().unwrap().pts_us;
     let span = newest - s.t0_us;
     println!("Puffer {} … {} µs ({} µs)", s.t0_us, newest, span);

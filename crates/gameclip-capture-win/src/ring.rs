@@ -435,10 +435,12 @@ impl PacketSource for Ring {
             .find(|&&i| video[i].pts_us <= from_us)
             .or(keys.first())
             .copied();
+        let mut cut_at_gap = false;
         if let Some(st) = start
             && let Some(gap) = (st + 1..video.len()).rev().find(|&i| video[i].gap_before)
         {
             start = Some(gap);
+            cut_at_gap = true;
         }
         let Some(start) = start else {
             return Snapshot {
@@ -469,7 +471,12 @@ impl PacketSource for Ring {
         Snapshot {
             t0_us: t0,
             end_us: end,
-            truncated: t0 > from_us + 1_000_000,
+            // Verkürzt nur durch Lücke oder Abschnittswechsel; ein noch nicht voller Puffer ergibt
+            // einfach einen kürzeren Clip ohne Hinweis (Design, „Speichern per Hotkey“ 3).
+            truncated: t0 > from_us
+                && (cut_at_gap
+                    || video[0].gap_before
+                    || s.index.iter().any(|p| p.section < section)),
             video,
             audio,
         }

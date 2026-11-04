@@ -11,16 +11,34 @@ gameclip-capture-win.workspace = true
 gameclip-core.workspace = true
 gameclip-gpu.workspace = true
 gameclip-media.workspace = true
+gameclip-protocol.workspace = true
 rsmpeg.workspace = true
 rusqlite.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+tray-icon.workspace = true
 uuid.workspace = true
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_DataExchange",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

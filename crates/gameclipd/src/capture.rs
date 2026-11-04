@@ -82,12 +82,18 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn start(cfg: RecorderConfig, events: Sender<RecorderEvent>) -> Result<Self, CaptureError> {
-        let ring = Arc::new(Ring::new(cfg.ring));
+    /// Startet die Pipelines in den vorhandenen Ring. Der Ring überlebt Neustarts (Geräteverlust,
+    /// Sperren); der Aufrufer beginnt dann mit `Ring::new_section` einen neuen Abschnitt.
+    pub fn start(
+        video_cfg: VideoConfig,
+        audio_cfg: AudioConfig,
+        ring: Arc<Ring>,
+        events: Sender<RecorderEvent>,
+    ) -> Result<Self, CaptureError> {
         let (vtx, vrx) = unbounded();
         let (atx, arx) = unbounded();
-        let video = VideoPipeline::start(cfg.video, vtx)?;
-        let audio = AudioPipeline::start(cfg.audio, atx)?;
+        let video = VideoPipeline::start(video_cfg, vtx)?;
+        let audio = AudioPipeline::start(audio_cfg, atx)?;
         let video_params = video.info().params.clone();
         let audio_params = audio.codec_parameters().to_vec();
         let (encoder, hardware, hdr_active) = (

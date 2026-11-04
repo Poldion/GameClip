@@ -5,7 +5,14 @@
 #![cfg(windows)]
 
 pub mod capture;
+pub mod cli;
+pub mod clipboard;
 pub mod foreground;
 pub mod index;
+pub mod ipc_server;
+pub mod logging;
+pub mod msgthread;
 pub mod paths;
 pub mod save;
+pub mod service;
+pub mod tray;

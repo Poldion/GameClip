@@ -43,6 +43,10 @@ rubato = "5"
 audioadapter-buffers = "5"
 rusqlite = { version = "0.41", features = ["bundled"] }
 tempfile = "3"
+tray-icon = "0.26"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 # FFmpeg 8.1 (Feature ffmpeg8 ist Standard); Linken über .cargo/config.toml.
 rsmpeg = "0.18"
 

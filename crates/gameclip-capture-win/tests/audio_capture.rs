@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Echte Tonaufnahme über 3 s: System per Prozess-Loopback (eigener Prozess ausgeschlossen),
+//! Echte Tonaufnahme über 3 s: System per Prozess-Loopback (ein Hilfsprozess ausgeschlossen),
 //! Mikrofon falls vorhanden. Ein leiser 1-kHz-Ton (ffplay, 1 s) prüft, dass der Systemton
 //! ankommt und zur richtigen Zeit auf der Zeitachse liegt.
 #![cfg(windows)]
@@ -19,10 +19,16 @@ use rsmpeg::ffi;
 fn records_system_and_mic_on_one_timeline() {
     let has_mic = mic::list_devices().map(|d| !d.is_empty()).unwrap_or(false);
     println!("Mikrofone: {:?}", mic::list_devices());
+    // Ausgeschlossen wird ein untätiger Hilfsprozess, nicht der Test selbst: EXCLUDE gilt für den
+    // ganzen Prozessbaum, und ffplay ist ein Kind des Tests (sein Ton fehlte sonst zu Recht).
+    let mut idle = Command::new("cmd")
+        .args(["/c", "ping -n 8 127.0.0.1 >nul"])
+        .spawn()
+        .expect("Hilfsprozess startet");
     let (tx, rx) = crossbeam_channel::unbounded();
     let pipeline = AudioPipeline::start(
         AudioConfig {
-            exclude_pid: std::process::id(),
+            exclude_pid: idle.id(),
             system_gain_db: 0.0,
             mic: has_mic.then_some(MicConfig {
                 device_id: None,
@@ -50,6 +56,8 @@ fn records_system_and_mic_on_one_timeline() {
     let _ = player.wait();
     let params = pipeline.codec_parameters().to_vec();
     pipeline.stop();
+    let _ = idle.kill();
+    let _ = idle.wait();
 
     let mut packets: Vec<(Track, rsmpeg::avcodec::AVPacket, i64)> = Vec::new();
     let mut levels = Vec::new();
@@ -99,10 +107,35 @@ fn records_system_and_mic_on_one_timeline() {
         .filter(|(t, ..)| *t < tone_us)
         .map(|l| l.1)
         .collect();
+    println!("Ton ab {} ms", tone_us / 1000);
+    println!(
+        "Alle Pegel (ms, dBFS): {:?}",
+        levels
+            .iter()
+            .map(|l| (l.0 / 1000, l.1 as i32))
+            .collect::<Vec<_>>()
+    );
     println!("System-Pegel vor dem Ton {before:?}");
     println!("System-Pegel während des Tons {during:?}");
     let loudest = during.iter().cloned().fold(-100.0f32, f32::max);
     assert!(loudest > -60.0, "Ton nicht im Systemton: {loudest} dBFS");
+    // Der Sinus dauert 1 s: so viele 100-ms-Pegel liegen auf seinem Niveau (±3 dB), und zwar
+    // zusammenhängend nach dem Start von ffplay.
+    let tone: Vec<i64> = levels
+        .iter()
+        .filter(|(t, s, _)| *t >= tone_us && (s - loudest).abs() <= 3.0)
+        .map(|l| l.0 / 100_000)
+        .collect();
+    println!("Tonblöcke (×100 ms): {tone:?}");
+    assert!(
+        (9..=11).contains(&tone.len()),
+        "Tondauer {} × 100 ms",
+        tone.len()
+    );
+    assert!(
+        tone.windows(2).all(|w| w[1] - w[0] == 1),
+        "Ton zusammenhängend"
+    );
 
     // Einzelspuren lassen sich als M4A schreiben.
     let path = std::env::temp_dir().join(format!("gameclip-audio-test-{}.m4a", std::process::id()));

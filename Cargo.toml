@@ -7,6 +7,7 @@ members = [
     "crates/gameclip-media",
     "crates/gameclip-testsupport",
     "crates/gameclip-capture-win",
+    "crates/gameclipd",
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ gameclip-protocol = { path = "crates/gameclip-protocol" }
 gameclip-gpu = { path = "crates/gameclip-gpu" }
 gameclip-testsupport = { path = "crates/gameclip-testsupport" }
 gameclip-media = { path = "crates/gameclip-media" }
+gameclip-capture-win = { path = "crates/gameclip-capture-win" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -39,6 +41,8 @@ crossbeam-channel = "0.5"
 wasapi = "0.26"
 rubato = "5"
 audioadapter-buffers = "5"
+rusqlite = { version = "0.41", features = ["bundled"] }
+tempfile = "3"
 # FFmpeg 8.1 (Feature ffmpeg8 ist Standard); Linken über .cargo/config.toml.
 rsmpeg = "0.18"
 

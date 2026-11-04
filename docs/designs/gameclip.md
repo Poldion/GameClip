@@ -905,9 +905,9 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
         | --- | --- | --- | --- |
         | `windows` / `windows-core` | 0.62 | je Crate die genutzten Module: `Win32_Foundation`, `Win32_Graphics_Direct3D`, `Win32_Graphics_Direct3D11`, `Win32_Graphics_Dxgi`, `Win32_Graphics_Dxgi_Common`, `Win32_Graphics_Imaging`, `Graphics_Capture`, `Graphics_DirectX_Direct3D11`, `Win32_System_WinRT_Direct3D11`, `Win32_System_WinRT_Graphics_Capture`, `Win32_Media_Audio`, `Win32_System_Pipes`, `Win32_Security`, `Win32_Security_Authorization`, `Win32_Storage_FileSystem`, `Win32_System_Console`, `Win32_System_LibraryLoader`, `Win32_UI_WindowsAndMessaging`, `Win32_UI_Input_KeyboardAndMouse`, `Win32_UI_Shell`, `Win32_UI_Shell_Common`, `Win32_System_Com`, `Win32_System_Diagnostics_ToolHelp`, `Win32_System_Threading`, `Win32_System_JobObjects`, `Win32_System_RemoteDesktop`, `ApplicationModel`, `UI_Notifications`, `Data_Xml_Dom` | gpu, media, capture-win, gameclipd, worker, ui-platform |
         | `rsmpeg` | 0.18 | `ffmpeg8` (Standard) | media |
-        | `wasapi` | 0.19 | – | capture-win |
-        | `rubato` | 0.16 | – | capture-win |
-        | `rusqlite` | 0.36 | `bundled` | gameclipd |
+        | `wasapi` | 0.26 | – | capture-win |
+        | `rubato` / `audioadapter-buffers` | 5 / 5 | – | capture-win (`Slip` für den Driftausgleich) |
+        | `rusqlite` | 0.41 | `bundled` | gameclipd |
         | `serde` | 1 | `derive` | alle |
         | `serde_json` | 1 | – | protocol, gameclipd, worker, ui |
         | `toml` | 0.8 | – | core |
@@ -1277,6 +1277,18 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     7.  Teilfehler: `.m4a` fehlgeschlagen → ihre `.part` bzw. Datei löschen, MP4 behalten, `has_tracks = false`, Hinweis in der Benachrichtigung; MP4 fehlgeschlagen → MP4-`.part`, die `.m4a` (als `.part` oder bereits umbenannt) und den Eintrag löschen, `SaveFailed`.
     8.  Eintrag `ok`, Speicherlimit (`retention_exec.rs`).
     9.  Ton, Benachrichtigung, `SaveCompleted`.
+    *   **Umgesetzt 2026-11 (Schritte 1–8 ohne Speicherlimit):**
+        *   `save_clip(&SaveInputs, &SaveRequest) -> Result<Saved, SaveError>`.
+        *   **Ohne Kopie:** Die Pakete des Schnappschusses gehen ohne Kopie an FFmpeg (`PacketRef::to_avpacket`, `av_buffer_create` mit einer `Arc` auf den Block). Ein 60-s-Clip braucht beim Speichern also keine ~100 MB zusätzlich.
+        *   **Zeitstempel:** Video in µs relativ zu t0. Ton wird relativ zu t0 auf das Sample gerundet (Zeitbasis 1/48 000). Das ist exakt, weil die Ringzeiten aus Samples um weniger als 1 µs abgerundet sind.
+        *   **Gemessen mit ffprobe:** Mischung (MP4) und Einzelspuren (`.m4a`) haben denselben Start 0 und dieselbe Länge in Samples. Für den Speicherweg ist das Kriterium aus S4 („±1 Sample“) damit erfüllt.
+        *   **Cliplänge:** Ein Clip ist zwischen Pufferlänge und Pufferlänge plus einer Bildgruppe lang. Er beginnt am letzten Keyframe ≤ Tastendruck − Pufferlänge.
+        *   **Fehlerzuordnung:**
+            *   `ERROR_DISK_FULL`/`ERROR_HANDLE_DISK_FULL`/`ENOSPC` → `DiskFull`
+            *   „nicht gefunden“/„Zugriff verweigert“ → `FolderMissing`
+            *   alles andere → `EncoderFailed`
+        *   **Offen:** Speicherlimit, Ton, Benachrichtigung, Test „Platte voll“.
+    *   **Loopback-Befund (2026-11):** `EXCLUDE_TARGET_PROCESS_TREE` schließt auch alle **Kindprozesse** von gameclipd aus (etwa den Worker). Der Ton eines Programms, das gameclipd startet, landet also nie im Clip.
 
 ##### 44. `crates/gameclipd/src/foreground.rs` (Create)
 

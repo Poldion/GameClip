@@ -99,6 +99,42 @@ impl PacketRef {
     pub fn data(&self) -> &[u8] {
         self.block.read(self.offset, self.len)
     }
+
+    /// FFmpeg-Paket ohne Kopie: der `AVBufferRef` hält eine `Arc` auf den Block, bis FFmpeg
+    /// ihn freigibt. Zeitstempel in µs (QPC); der Muxer verschiebt sie um t0.
+    pub fn to_avpacket(&self) -> rsmpeg::avcodec::AVPacket {
+        use rsmpeg::UnsafeDerefMut;
+        use rsmpeg::ffi;
+
+        unsafe extern "C" fn release(opaque: *mut std::ffi::c_void, _data: *mut u8) {
+            drop(unsafe { Box::from_raw(opaque as *mut Arc<BlockBuf>) });
+        }
+        let holder = Box::into_raw(Box::new(self.block.clone()));
+        let data = unsafe { self.block.ptr.add(self.offset) };
+        let buf = unsafe {
+            ffi::av_buffer_create(
+                data,
+                self.len,
+                Some(release),
+                holder as *mut std::ffi::c_void,
+                ffi::AV_BUFFER_FLAG_READONLY as i32,
+            )
+        };
+        assert!(!buf.is_null(), "av_buffer_create: kein Speicher");
+        let mut p = rsmpeg::avcodec::AVPacket::new();
+        unsafe {
+            let raw = p.deref_mut();
+            raw.buf = buf;
+            raw.data = data;
+            raw.size = self.len as i32;
+            raw.pts = self.pts_us;
+            raw.dts = self.dts_us;
+            if self.keyframe {
+                raw.flags |= ffi::AV_PKT_FLAG_KEY as i32;
+            }
+        }
+        p
+    }
 }
 
 /// Ergebnis eines Schnappschusses: Pakete je Spur in Ablageordnung.

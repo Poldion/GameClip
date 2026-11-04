@@ -1,0 +1,33 @@
+[package]
+name = "gameclipd"
+description = "GameClip-Dienst: Aufnahme, Ringpuffer, Speichern per Hotkey, Index, Tray, IPC"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+crossbeam-channel.workspace = true
+gameclip-capture-win.workspace = true
+gameclip-core.workspace = true
+gameclip-gpu.workspace = true
+gameclip-media.workspace = true
+rsmpeg.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-core.workspace = true
+
+# Tests laden die FFmpeg-DLLs aus third_party/ffmpeg/bin (muss in PATH stehen).
+[dev-dependencies]
+gameclip-testsupport.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

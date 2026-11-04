@@ -86,6 +86,16 @@ pub struct StartInfo {
     pub adapter: String,
 }
 
+/// Fordert beim nächsten Bild ein IDR an.
+#[derive(Clone)]
+pub struct KeyframeHandle(Arc<AtomicBool>);
+
+impl KeyframeHandle {
+    pub fn force(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
 pub struct VideoPipeline {
     stop: Arc<AtomicBool>,
     force_kf: Arc<AtomicBool>,
@@ -129,6 +139,11 @@ impl VideoPipeline {
     /// Das nächste kodierte Bild wird ein IDR (für Schnappschüsse und nach Lücken).
     pub fn force_keyframe(&self) {
         self.force_kf.store(true, Ordering::Relaxed);
+    }
+
+    /// Griff zum Anfordern eines IDR von einem anderen Thread (Pump in den Ringpuffer).
+    pub fn keyframe_handle(&self) -> KeyframeHandle {
+        KeyframeHandle(self.force_kf.clone())
     }
 
     pub fn stats(&self) -> VideoStats {

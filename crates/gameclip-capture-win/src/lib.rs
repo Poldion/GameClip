@@ -12,7 +12,9 @@ pub mod video_pipeline;
 pub mod wgc;
 
 pub use audio::{AudioConfig, AudioEvent, AudioPacket, AudioPipeline, MicConfig, Track};
-pub use video_pipeline::{VideoConfig, VideoEvent, VideoPacket, VideoPipeline, VideoStats};
+pub use video_pipeline::{
+    KeyframeHandle, VideoConfig, VideoEvent, VideoPacket, VideoPipeline, VideoStats,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CaptureError {

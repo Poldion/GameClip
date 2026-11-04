@@ -1506,6 +1506,17 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 ##### 71. `packaging/assets/*.png` (Create)
 
 *   **Änderungen:** App-Icons in den MSIX-Größen (44, 50, 150, 310 px) und die sechs Tray-Symbole (16, 20, 24, 32 px) *(Größen vorläufig)*.
+*   **Umgesetzt 2026-11 (Dateien 68, 69, 71):**
+    *   **Q15 beantwortet:** `graphicsCaptureWithoutBorder` und `graphicsCaptureProgrammatic` gehören in den Namespace `uap11` (`http://schemas.microsoft.com/appx/manifest/uap/windows10/11`, ab Build 19645).
+    *   **Symbole:** erzeugt `packaging/make-assets.ps1` (dunkles abgerundetes Quadrat mit rotem Punkt); die PNGs sind eingecheckt. Das Tray zeichnet seine Zustandssymbole vorerst selbst (farbiger Kreis).
+    *   **`build-msix.ps1 -NoSign`:** Release-Build, Layout, `MakeAppx pack /h SHA256`. Packt nur die fünf FFmpeg-DLLs, die Dienst und Worker laden (`avcodec`, `avformat`, `avutil`, `swresample`, `swscale`; laut `dumpbin /dependents`). `avdevice` und `avfilter` (41 MB) fehlen, `ffmpeg.exe`/`ffplay.exe` ebenso.
+    *   **Lizenzen im Paket:** `licenses/` mit der GPL-3.0 von GameClip und FFmpeg sowie der Quelle der FFmpeg-Version.
+    *   **Gemessen:**
+        *   Paket 61 MB (vorher 79 MB mit allen DLLs).
+        *   **S2-Kriterium erfüllt:** keine FFmpeg-DLL hängt von `mfplat.dll` ab.
+    *   **C-Laufzeit statisch:** `.cargo/config.toml` setzt `+crt-static`; Dienst und Worker brauchen so kein `VCRUNTIME140.dll` und das Paket keine VCLibs-Abhängigkeit.
+    *   **Nicht gebaut:** `-TestCert` importiert ein Zertifikat nach `LocalMachine\TrustedPeople` (Administratorrechte, Sicherheitseinstellung des Rechners) und wird deshalb nur vom Entwickler selbst ausgeführt. Installation und Autostart im Paket sind damit noch nicht geprüft (S1).
+    *   **`LICENSE`:** der unveränderte GPL-3.0-Text aus dem FFmpeg-Build (SHA-256 `8ceb4b9e…5b903`, gleich der offiziellen `gpl-3.0.txt`).
 
 ### Verification Plan
 

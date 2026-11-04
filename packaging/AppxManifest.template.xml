@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     MSIX-Manifest (Design, Datei 68). Platzhalter ersetzt packaging/build-msix.ps1:
+     {{VERSION}}, {{PUBLISHER}}. Das M0-Paket enthält nur den Dienst und den Worker; die
+     Oberfläche (Application "GameClip" mit Protokoll gameclip:) kommt mit M3. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:uap11="http://schemas.microsoft.com/appx/manifest/uap/windows10/11"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 uap11 rescap">
+
+  <Identity
+    Name="io.github.poldion.GameClip"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>GameClip</DisplayName>
+    <PublisherDisplayName>GameClip contributors</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+    <Description>Clips der letzten Minute per Hotkey, offline und ohne Konto.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.26100.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="de-DE" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Service" Executable="gameclipd.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="GameClip"
+        Description="GameClip-Dienst"
+        BackgroundColor="transparent"
+        Square150x150Logo="assets\Square150x150Logo.png"
+        Square44x44Logo="assets\Square44x44Logo.png"
+        AppListEntry="none" />
+      <Extensions>
+        <uap5:Extension Category="windows.startupTask" Executable="gameclipd.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="GameClipServiceStartup" Enabled="false" DisplayName="GameClip" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Q15: beide im Namespace uap11 (ab Build 19645). -->
+    <uap11:Capability Name="graphicsCaptureWithoutBorder" />
+    <uap11:Capability Name="graphicsCaptureProgrammatic" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

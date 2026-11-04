@@ -1,3 +1,9 @@
+# C-Laufzeit statisch: gameclipd.exe und gameclip-worker.exe brauchen so kein VCRUNTIME140.dll
+# (im MSIX sonst eine zusätzliche VCLibs-Paketabhängigkeit). Die FFmpeg-DLLs nutzen nur die
+# UCRT, die Teil von Windows ist.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
 [env]
 # ts-rs schreibt die TypeScript-Typen des Protokolls direkt ins Frontend (Design, Datei 3).
 TS_RS_EXPORT_DIR = { value = "apps/gameclip-ui/src/generated", relative = true }

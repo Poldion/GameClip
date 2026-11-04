@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/gameclip-core",
+    "crates/gameclip-protocol",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Poldion/GameClip"
+
+[workspace.dependencies]
+gameclip-core = { path = "crates/gameclip-core" }
+gameclip-protocol = { path = "crates/gameclip-protocol" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["local-offset", "formatting", "parsing", "serde", "macros"] }
+thiserror = "2"
+bitflags = { version = "2", features = ["serde"] }
+ts-rs = { version = "11", features = ["uuid-impl", "serde-compat", "serde-json-impl"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+# Gilt für alle Programme des Workspace: ein Absturz soll sofort enden,
+# statt Threads halb weiterlaufen zu lassen (siehe Design, Datei 1).
+panic = "abort"

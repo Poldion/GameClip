@@ -1,0 +1,8 @@
+target/
+node_modules/
+dist/
+third_party/ffmpeg/
+packaging/out/
+*.msix
+*.pfx
+*.lcov

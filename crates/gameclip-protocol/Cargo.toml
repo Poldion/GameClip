@@ -1,0 +1,13 @@
+[package]
+name = "gameclip-protocol"
+description = "IPC-Vertrag zwischen gameclipd, Oberfläche und Worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gameclip-core = { workspace = true, features = ["ts"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ts-rs.workspace = true

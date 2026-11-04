@@ -1,0 +1,19 @@
+[package]
+name = "gameclip-core"
+description = "Plattformneutrale Kernlogik von GameClip: Zustandsmaschine, Einstellungen, Prognose, Speicherlimit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Erzeugt TypeScript-Typen für alle Typen, die über IPC gehen.
+ts = ["dep:ts-rs"]
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+uuid.workspace = true
+time.workspace = true
+thiserror.workspace = true
+bitflags.workspace = true
+ts-rs = { workspace = true, optional = true }

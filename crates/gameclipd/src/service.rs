@@ -18,7 +18,7 @@ use gameclip_core::retention::FolderKind;
 use gameclip_core::settings::{Settings, parse};
 use gameclip_core::state::{Effect, Machine, SaveError, ServiceState, StateEvent, transition};
 use gameclip_protocol::error::ErrorCode;
-use gameclip_protocol::messages::ServiceEvent;
+use gameclip_protocol::messages::{ExportProfile, ServiceEvent};
 use rsmpeg::avcodec::AVCodecParameters;
 use time::OffsetDateTime;
 use tracing::{error, info, warn};
@@ -31,6 +31,7 @@ use crate::capture::{Recorder, RecorderConfig, RecorderEvent};
 use crate::foreground::foreground_program;
 use crate::index::Index;
 use crate::ipc_server::{Broadcaster, IpcRequest, IpcServer};
+use crate::jobs::{JobEvent, Jobs, JobsConfig, WORKER_SILENCE_TIMEOUT_S};
 use crate::msgthread::{MsgEvent, MsgThread};
 use crate::paths::Paths;
 use crate::save::{SaveInputs, SaveRequest, Saved, save_clip};
@@ -173,6 +174,10 @@ struct Service {
     last_clip: Option<PathBuf>,
     ipc_rx: Receiver<IpcRequest>,
     events: Broadcaster,
+    jobs: Jobs,
+    job_rx: Receiver<JobEvent>,
+    /// Export aus der Tray-Aktion: nach Abschluss in die Zwischenablage (G1a, Größe 4).
+    copy_after: Option<(u32, std::time::Instant)>,
     exit: bool,
 }
 
@@ -180,7 +185,7 @@ impl Service {
     fn new(settings: Settings, paths: Paths, index: Arc<Index>) -> std::io::Result<Self> {
         let (msg_tx, msg_rx) = unbounded();
         let machine = Machine::default();
-        let msg = MsgThread::start(msg_tx, view(&machine))?;
+        let msg = MsgThread::start(msg_tx, view(&machine, settings.export.target_bytes))?;
         let (rec_tx, rec_rx) = unbounded();
         let (save_tx, jobs) = unbounded();
         let (done_tx, save_rx) = unbounded();
@@ -194,6 +199,22 @@ impl Service {
         if let Err(e) = IpcServer::start(ipc_tx, events.clone()) {
             warn!("Pipe-Server startet nicht: {e}");
         }
+        let (job_tx, job_rx) = unbounded();
+        let worker_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("gameclip-worker.exe")))
+            .unwrap_or_else(|| PathBuf::from("gameclip-worker.exe"));
+        let jobs = Jobs::new(
+            JobsConfig {
+                worker_path,
+                paths: paths.clone(),
+                index: index.clone(),
+                encoder_order: Vec::new(),
+                adapter_luid: 0,
+                silence_timeout: std::time::Duration::from_secs(WORKER_SILENCE_TIMEOUT_S),
+            },
+            job_tx,
+        );
         let last_clip = index
             .latest_ok(FolderKind::Clips)
             .ok()
@@ -217,6 +238,9 @@ impl Service {
             last_clip,
             ipc_rx,
             events,
+            jobs,
+            job_rx,
+            copy_after: None,
             exit: false,
         })
     }
@@ -247,6 +271,7 @@ impl Service {
                 recv(self.rec_rx) -> ev => if let Ok(ev) = ev { self.on_recorder(ev) },
                 recv(self.save_rx) -> r => if let Ok(r) = r { self.on_saved(r) },
                 recv(self.ipc_rx) -> r => if let Ok(r) = r { self.on_ipc(r) },
+                recv(self.job_rx) -> ev => if let Ok(ev) = ev { self.on_job(ev) },
                 recv(recovery) -> _ => {
                     self.recovery = None;
                     let ok = self.restart_recorder();
@@ -304,6 +329,7 @@ impl Service {
             MsgEvent::Tray(cmd) => match cmd {
                 TrayCommand::SaveClip => self.press(gameclip_capture_win::pacer::qpc_us()),
                 TrayCommand::CopyLastClip => self.copy_last_clip(),
+                TrayCommand::CopyLastClipSmall => self.copy_last_clip_small(),
                 TrayCommand::TogglePause => {
                     let ev = if self.machine.state == ServiceState::Paused {
                         StateEvent::StartBuffer
@@ -380,6 +406,20 @@ impl Service {
     fn on_ipc(&mut self, r: IpcRequest) {
         match r {
             IpcRequest::SaveClip => self.press(gameclip_capture_win::pacer::qpc_us()),
+            IpcRequest::StartExport {
+                clip_id,
+                in_us,
+                out_us,
+                profile,
+                reply,
+            } => {
+                let r = match self.index.get(clip_id) {
+                    Ok(Some(c)) => Ok(self.jobs.start(c, in_us, out_us, profile)),
+                    _ => Err((ErrorCode::NotFound, format!("Clip {clip_id} unbekannt"))),
+                };
+                let _ = reply.send(r);
+            }
+            IpcRequest::CancelJob(job_id) => self.jobs.cancel(job_id),
             IpcRequest::GetStatus(reply) => {
                 let _ = reply.send(serde_json::json!({
                     "state": format!("{:?}", self.machine.state),
@@ -388,6 +428,48 @@ impl Service {
                     "encoder": self.recorder.as_ref().map(|r| r.encoder().0.to_string()),
                 }));
             }
+        }
+    }
+
+    /// Letzten Clip auf die Zielgröße exportieren und danach in die Zwischenablage legen.
+    fn copy_last_clip_small(&mut self) {
+        let Some(clip) = self.index.latest_ok(FolderKind::Clips).ok().flatten() else {
+            info!("Noch kein Clip zum Kopieren");
+            return;
+        };
+        let bytes = self.settings.export.target_bytes;
+        let job = self.jobs.start(
+            clip.clone(),
+            0,
+            clip.duration_us,
+            ExportProfile::TargetSize { bytes },
+        );
+        info!("Export {job} für die Zwischenablage gestartet ({bytes} Bytes)");
+        self.copy_after = Some((job, std::time::Instant::now()));
+    }
+
+    fn on_job(&mut self, ev: JobEvent) {
+        self.events.send(ev.to_service_event());
+        match ev {
+            JobEvent::Completed { job_id, path, .. }
+                if self.copy_after.is_some_and(|(id, _)| id == job_id) =>
+            {
+                let (_, started) = self.copy_after.take().expect("geprüft");
+                match crate::clipboard::copy_file(&path) {
+                    Ok(()) => info!(
+                        "G1a: Tray-Aktion bis Zwischenablage {} ms ({})",
+                        started.elapsed().as_millis(),
+                        path.display()
+                    ),
+                    Err(e) => warn!("Zwischenablage: {e}"),
+                }
+            }
+            JobEvent::Failed { job_id, .. }
+                if self.copy_after.is_some_and(|(id, _)| id == job_id) =>
+            {
+                self.copy_after = None;
+            }
+            _ => {}
         }
     }
 
@@ -492,7 +574,9 @@ impl Service {
                 };
                 self.feed(ev);
             }
-            Effect::UpdateTray => self.msg.update_tray(view(&self.machine)),
+            Effect::UpdateTray => self
+                .msg
+                .update_tray(view(&self.machine, self.settings.export.target_bytes)),
             Effect::Exit => self.exit = true,
         }
     }
@@ -526,7 +610,7 @@ impl Service {
     }
 }
 
-fn view(m: &Machine) -> TrayView {
+fn view(m: &Machine, target_bytes: u64) -> TrayView {
     use gameclip_core::state::Restrictions;
     let restricted = !m.restrictions.is_empty();
     let state = match m.state {
@@ -564,5 +648,6 @@ fn view(m: &Machine) -> TrayView {
         tooltip: lines.join("\n"),
         paused: m.state == ServiceState::Paused,
         mic_paused: m.mic_paused,
+        target_mb: target_bytes.div_ceil(1_000_000),
     }
 }

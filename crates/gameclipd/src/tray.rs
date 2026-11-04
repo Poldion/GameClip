@@ -11,6 +11,8 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 pub enum TrayCommand {
     SaveClip,
     CopyLastClip,
+    /// Letzten Clip auf die Zielgröße exportieren und kopieren (G1a).
+    CopyLastClipSmall,
     TogglePause,
     ToggleMic,
     Quit,
@@ -33,12 +35,15 @@ pub struct TrayView {
     pub tooltip: String,
     pub paused: bool,
     pub mic_paused: bool,
+    /// Zielgröße in MB für den Menüeintrag Letzten Clip unter N MB kopieren.
+    pub target_mb: u64,
 }
 
 pub struct Tray {
     icon: TrayIcon,
     save: MenuItem,
     copy: MenuItem,
+    copy_small: MenuItem,
     pause: MenuItem,
     mic: CheckMenuItem,
     quit: MenuItem,
@@ -76,6 +81,11 @@ impl Tray {
     pub fn new(view: TrayView) -> Result<Self, String> {
         let save = MenuItem::new("Clip speichern", true, None);
         let copy = MenuItem::new("Letzten Clip kopieren", true, None);
+        let copy_small = MenuItem::new(
+            format!("Letzten Clip unter {} MB kopieren", view.target_mb),
+            true,
+            None,
+        );
         let pause = MenuItem::new("Aufnahme pausieren", true, None);
         let mic = CheckMenuItem::new("Mikrofon pausieren", true, view.mic_paused, None);
         let quit = MenuItem::new("Beenden", true, None);
@@ -83,6 +93,7 @@ impl Tray {
         menu.append_items(&[
             &save,
             &copy,
+            &copy_small,
             &PredefinedMenuItem::separator(),
             &pause,
             &mic,
@@ -100,6 +111,7 @@ impl Tray {
             icon,
             save,
             copy,
+            copy_small,
             pause,
             mic,
             quit,
@@ -134,6 +146,8 @@ impl Tray {
                 TrayCommand::SaveClip
             } else if id == self.copy.id() {
                 TrayCommand::CopyLastClip
+            } else if id == self.copy_small.id() {
+                TrayCommand::CopyLastClipSmall
             } else if id == self.pause.id() {
                 TrayCommand::TogglePause
             } else if id == self.mic.id() {

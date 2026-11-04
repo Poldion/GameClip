@@ -20,7 +20,9 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use gameclip_core::ids::pipe_name;
 use gameclip_protocol::error::ErrorCode;
 use gameclip_protocol::framing::{read_json, write_json};
-use gameclip_protocol::messages::{Command, HelloReply, Request, Response, ServiceEvent};
+use gameclip_protocol::messages::{
+    Command, ExportProfile, HelloReply, Request, Response, ServiceEvent, StartExportJobReply,
+};
 use gameclip_protocol::version::PROTOCOL_VERSION;
 use tracing::{info, warn};
 use windows::Win32::Foundation::{CloseHandle, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, LocalFree};
@@ -47,6 +49,14 @@ const POLL: Duration = Duration::from_millis(10);
 #[derive(Debug)]
 pub enum IpcRequest {
     SaveClip,
+    StartExport {
+        clip_id: u32,
+        in_us: u64,
+        out_us: u64,
+        profile: ExportProfile,
+        reply: Sender<Result<u32, (ErrorCode, String)>>,
+    },
+    CancelJob(u32),
     /// Antwort auf `GetStatus` (JSON des `ServiceStatus`).
     GetStatus(Sender<serde_json::Value>),
 }
@@ -252,6 +262,30 @@ fn connection(
                     Ok(status) => Response::ok(req.id, &status),
                     Err(_) => Response::err(req.id, ErrorCode::Timeout, "Dienst antwortet nicht"),
                 }
+            }
+            Command::StartExportJob {
+                clip_id,
+                in_us,
+                out_us,
+                profile,
+            } => {
+                let (tx, rx) = crossbeam_channel::bounded(1);
+                let _ = requests.send(IpcRequest::StartExport {
+                    clip_id,
+                    in_us,
+                    out_us,
+                    profile,
+                    reply: tx,
+                });
+                match rx.recv_timeout(Duration::from_secs(2)) {
+                    Ok(Ok(job_id)) => Response::ok(req.id, &StartExportJobReply { job_id }),
+                    Ok(Err((code, msg))) => Response::err(req.id, code, msg),
+                    Err(_) => Response::err(req.id, ErrorCode::Timeout, "Dienst antwortet nicht"),
+                }
+            }
+            Command::CancelJob { job_id } => {
+                let _ = requests.send(IpcRequest::CancelJob(job_id));
+                Response::ok(req.id, &serde_json::Value::Null)
             }
             Command::Hello { .. } => {
                 Response::err(req.id, ErrorCode::InvalidArgument, "Hello nur einmal")

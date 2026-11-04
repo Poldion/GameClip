@@ -31,6 +31,7 @@ windows = { workspace = true, features = [
     "Win32_System_Console",
     "Win32_System_DataExchange",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_Ole",
@@ -44,8 +45,22 @@ windows = { workspace = true, features = [
 ] }
 windows-core.workspace = true
 
+[features]
+# Baut `fake-worker` für die Auftrags-Tests (`cargo test --features test-support`).
+test-support = []
+
+[[bin]]
+name = "gameclipd"
+path = "src/main.rs"
+
+[[bin]]
+name = "fake-worker"
+path = "tests/support/fake_worker.rs"
+required-features = ["test-support"]
+
 # Tests laden die FFmpeg-DLLs aus third_party/ffmpeg/bin (muss in PATH stehen).
 [dev-dependencies]
+crossbeam-channel.workspace = true
 gameclip-testsupport.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

@@ -10,6 +10,7 @@ pub mod clipboard;
 pub mod foreground;
 pub mod index;
 pub mod ipc_server;
+pub mod jobs;
 pub mod logging;
 pub mod msgthread;
 pub mod paths;

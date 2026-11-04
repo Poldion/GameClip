@@ -1351,6 +1351,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 ##### 49. `crates/gameclipd/src/jobs.rs` (Create)
 
 *   **Änderungen:** Warteschlange, höchstens ein laufender Auftrag. `Jobs::new(worker_path: PathBuf, …)`; im Betrieb ist `worker_path` die `gameclip-worker.exe` neben `gameclipd.exe`, in Tests `fake-worker`. Vergibt `job_id` und eine neue UUID als `output_tag_id`, bestimmt `target_part_path` (`naming::export_file_name` + `dedupe` + `.part`), legt den Index-Eintrag `pending` an. Ergibt `export_plan::plan` `TooSmall`, endet der Auftrag sofort mit `JobFailed{code: TooLarge}`, ohne Worker. Startet den Worker mit `BELOW_NORMAL_PRIORITY_CLASS` in einem Job-Objekt mit `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; Auftrag als JSON über stdin; stdout-Zeilen → `JobProgress`/`JobCompleted`/`JobFailed`. Zeitlimit `WORKER_SILENCE_TIMEOUT_S`. Erfolg: umbenennen, `ok`, Speicherlimit Export-Ordner. Fehler oder `CancelJob` (Job-Objekt beenden): `.part` und `pending`-Eintrag löschen.
+    *   **Umgesetzt 2026-11 (ohne Speicherlimit):**
+        *   `Jobs::new(JobsConfig { worker_path, paths, index, encoder_order, adapter_luid, silence_timeout }, Sender<JobEvent>)`, dazu `start(...) -> job_id` und `cancel(job_id)`; das Zeitlimit ist für Tests einstellbar.
+        *   Am IPC-Server hängen `StartExportJob` und `CancelJob`. Die Ereignisse `JobProgress`/`JobCompleted`/`JobFailed` gehen per Broadcast an alle Verbindungen.
+        *   **Tray-Aktion für G1a:** „Letzten Clip unter N MB kopieren“ startet `TargetSize` mit `export.target_bytes`, legt das Ergebnis in die Zwischenablage und schreibt die Dauer ins Log („G1a: Tray-Aktion bis Zwischenablage … ms“).
+        *   Tests mit `fake-worker` (Feature `test-support`): Erfolg mit `_2` bei Namensgleichheit, Fehler, Zeitlimit, Absturz, Abbruch, `TooSmall` ohne Worker-Start.
+        *   **Gemessen (2026-11, ohne MSIX, RX 6750 XT):** `SaveClip` über die Pipe → 19,7-s-Clip in 125 ms → Export auf 10 MB fertig nach weiteren 4,4 s (Ergebnis 7,94 MB in 720p60). Größe 4 von G1a beträgt damit ohne Zwischenablage etwa 4,6 s. Die Werte für Game Bar und OBS fehlen noch.
 
 ##### 50. `crates/gameclipd/src/sound.rs`, `assets/sounds/success.wav`, `assets/sounds/failure.wav` (Create)
 

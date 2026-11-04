@@ -123,6 +123,76 @@ impl HwFrame {
     }
 }
 
+/// NV12-Textur mit Render-Target-Bindung (`staging = false`) oder zum Zurücklesen
+/// (`staging = true`).
+pub fn nv12_texture(gpu: &GpuDevice, w: u32, h: u32, staging: bool) -> Result<ID3D11Texture2D> {
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11_CPU_ACCESS_READ, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING,
+    };
+    use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
+    let mut desc = D3D11_TEXTURE2D_DESC {
+        Width: w,
+        Height: h,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_NV12,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        ..Default::default()
+    };
+    if staging {
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+    }
+    let mut tex = None;
+    unsafe { gpu.device.CreateTexture2D(&desc, None, Some(&mut tex))? };
+    Ok(tex.expect("Textur erzeugt"))
+}
+
+/// x264-Weg: NV12-Ziel über die Staging-Textur in ein AVFrame im Hauptspeicher kopieren.
+pub fn download_nv12(
+    gpu: &GpuDevice,
+    target: &ID3D11Texture2D,
+    staging: &ID3D11Texture2D,
+    w: u32,
+    h: u32,
+) -> Result<AVFrame> {
+    use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
+    let mut frame = AVFrame::new();
+    frame.set_format(ffi::AV_PIX_FMT_NV12);
+    frame.set_width(w as i32);
+    frame.set_height(h as i32);
+    frame.get_buffer(0)?;
+    let (w, h) = (w as usize, h as usize);
+    unsafe {
+        gpu.context.CopyResource(staging, target);
+        let mut m = D3D11_MAPPED_SUBRESOURCE::default();
+        gpu.context
+            .Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut m))?;
+        let pitch = m.RowPitch as usize;
+        let base = m.pData as *const u8;
+        // NV12 im Staging-Speicher: Y-Ebene, direkt danach die UV-Ebene (halbe Höhe).
+        for (plane, rows, offset) in [(0usize, h, 0usize), (1, h / 2, pitch * h)] {
+            let dst = frame.data[plane];
+            let dst_pitch = frame.linesize[plane] as usize;
+            for y in 0..rows {
+                std::ptr::copy_nonoverlapping(
+                    base.add(offset + y * pitch),
+                    dst.add(y * dst_pitch),
+                    w,
+                );
+            }
+        }
+        gpu.context.Unmap(staging, 0);
+    }
+    Ok(frame)
+}
+
 /// Textur und Array-Index eines D3D11-Frames (`data[0]`, `data[1]`), geliehen vom Frame.
 pub(crate) fn frame_texture(frame: &AVFrame) -> Result<(&ID3D11Texture2D, u32)> {
     if frame.format != ffi::AV_PIX_FMT_D3D11 {

@@ -4,6 +4,7 @@
 #![cfg(windows)]
 
 pub mod audio_codec;
+pub mod audio_decode;
 pub mod decode;
 pub mod demux;
 pub mod encoder;

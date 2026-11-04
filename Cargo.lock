@@ -543,6 +543,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameclip-worker"
+version = "0.1.0"
+dependencies = [
+ "gameclip-core",
+ "gameclip-gpu",
+ "gameclip-media",
+ "gameclip-protocol",
+ "gameclip-testsupport",
+ "rsmpeg",
+ "serde_json",
+ "tempfile",
+ "time",
+]
+
+[[package]]
 name = "gameclipd"
 version = "0.1.0"
 dependencies = [

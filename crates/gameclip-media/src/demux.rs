@@ -59,6 +59,47 @@ pub fn frame_times_us(path: &Path) -> Result<Vec<u64>> {
     Ok(times)
 }
 
+/// Eckdaten der Videospur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoInfo {
+    pub width: u32,
+    pub height: u32,
+    /// Gerundete mittlere Bildrate.
+    pub fps: u32,
+    pub duration_us: u64,
+    /// Bitrate der Videospur laut Datei (0, wenn unbekannt).
+    pub bit_rate: u64,
+}
+
+pub fn video_info(path: &Path) -> Result<VideoInfo> {
+    let input = open_input(path)?;
+    let (index, _) = input
+        .find_best_stream(ffi::AVMEDIA_TYPE_VIDEO)?
+        .ok_or(MediaError::NoVideoStream)?;
+    let s = &input.streams()[index];
+    let par = s.codecpar();
+    let rate = s.avg_frame_rate;
+    let fps = if rate.den > 0 && rate.num > 0 {
+        (f64::from(rate.num) / f64::from(rate.den)).round() as u32
+    } else {
+        60
+    };
+    let duration_us = if s.duration > 0 {
+        unsafe { ffi::av_rescale_q(s.duration, s.time_base, MICROS) as u64 }
+    } else if input.duration > 0 {
+        input.duration as u64
+    } else {
+        0
+    };
+    Ok(VideoInfo {
+        width: par.width as u32,
+        height: par.height as u32,
+        fps,
+        duration_us,
+        bit_rate: par.bit_rate.max(0) as u64,
+    })
+}
+
 /// Format-Metadaten der Datei.
 pub fn read_tags(path: &Path) -> Result<Tags> {
     let input = open_input(path)?;

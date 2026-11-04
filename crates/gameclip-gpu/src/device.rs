@@ -73,6 +73,37 @@ impl GpuDevice {
         })
     }
 
+    /// Gerät auf dem Adapter mit dieser LUID (Worker: dieselbe GPU wie die Aufnahme). Als
+    /// Ausgabe dient der erste Monitor des Adapters; ohne Monitor oder bei LUID 0 der
+    /// Hauptmonitor.
+    pub fn for_adapter(luid: u64) -> Result<Self> {
+        if luid == 0 {
+            return Self::for_monitor(MonitorTarget::Primary);
+        }
+        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
+        let mut a = 0;
+        while let Ok(adapter) = unsafe { factory.EnumAdapters1(a) } {
+            let desc = unsafe { adapter.GetDesc1()? };
+            if luid_to_u64(desc.AdapterLuid) == luid {
+                if let Ok(output) = unsafe { adapter.EnumOutputs(0) } {
+                    let monitor = unsafe { output.GetDesc()? }.Monitor;
+                    return Self::for_monitor(MonitorTarget::Handle(monitor));
+                }
+                break;
+            }
+            a += 1;
+        }
+        Self::for_monitor(MonitorTarget::Primary)
+    }
+
+    /// GPU-Priorität der Befehle dieses Geräts (−7 … 7); der Worker nutzt −7, damit das Spiel
+    /// Vorrang behält.
+    pub fn set_gpu_priority(&self, priority: i32) -> Result<()> {
+        let dxgi: IDXGIDevice = self.device.cast()?;
+        unsafe { dxgi.SetGPUThreadPriority(priority)? };
+        Ok(())
+    }
+
     /// Name des Adapters, z. B. für die Statuszeile und die Diagnose.
     pub fn adapter_name(&self) -> String {
         unsafe { self.adapter.GetDesc1() }

@@ -1391,6 +1391,16 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `trim.rs`: Ablauf Schritte 1–5 aus „Kürzen und Export“ mit `gameclip-media::decode`, `gameclip-gpu::Converter` und `encoder` (Profil `Export`); x264-Weg mit Kopie über Staging-Textur. In M0 ohne `TargetSize`.
     *   `size_target.rs` (ab M3): `export_plan::plan` (bei `TooSmall` sofort `Error{TooLarge}`), kodieren, Größe prüfen, höchstens ein Versuch mit `export_plan::correct`, dann `TooLarge`.
     *   Sicherung der Ausgabe wie in Datei 29 (`OpenOptions::write(true)` + `sync_all`).
+    *   **Umgesetzt 2026-11 (mit `TargetSize`, weil der G1a-Durchstich sie braucht):**
+        *   **Gerät:** `GpuDevice::for_adapter(luid)` (LUID 0 bzw. Adapter ohne Monitor → Hauptmonitor) und `set_gpu_priority(-7)`.
+        *   **Ton:** `gameclip-media::audio_decode` dekodiert alle Tonspuren mit Titel; geschnitten wird sample-genau. Bitraten: 160 kbit/s für die Mischung, 128 kbit/s für Einzelspuren, 96 kbit/s bei Zielgröße.
+        *   **Bildrate:** Die Ausgabe liegt im festen Raster der Ziel-Bildrate; bei halber Rate fällt jedes zweite Bild weg.
+        *   **Video-Bitrate:** Ohne Zielgröße gilt die Bitrate der Quelle laut Datei, ersatzweise 14 Mbit/s.
+        *   **Gemeinsame Hilfen:** `nv12_texture` und `download_nv12` liegen jetzt in `gameclip-media::hwdevice`; Aufnahme und Worker nutzen sie gemeinsam.
+        *   **Gemessen auf RX 6750 XT (D3D11VA + `h264_amf`):**
+            *   Schnitt bei Bild 37 bis vor Bild 97: Die Ausgabe beginnt mit Bild 37 und endet mit Bild 96, genau 60 Bilder.
+            *   Die Tonspur ist laut Container exakt so lang wie das Video. Ein Decoder liefert zusätzlich die AAC-Füllung des letzten Blocks (256 Samples); Tests messen deshalb die Spurdauer.
+            *   Zielgröße 2 MB, 600 KB und 250 KB unterschritten; 60 KB für 4 s endet ohne Kodieren mit `TooLarge`, wie der Plan vorhersagt.
 
 ##### 57. `crates/gameclip-worker/tests/trim.rs` (Create)
 

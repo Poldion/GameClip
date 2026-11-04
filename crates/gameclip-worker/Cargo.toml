@@ -1,0 +1,21 @@
+[package]
+name = "gameclip-worker"
+description = "Kürzen und Größen-Export mit Neukodierung, gestartet vom Dienst (JSON über stdin/stdout)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+gameclip-core.workspace = true
+gameclip-gpu.workspace = true
+gameclip-media.workspace = true
+gameclip-protocol.workspace = true
+rsmpeg.workspace = true
+serde_json.workspace = true
+time.workspace = true
+
+# Tests laden die FFmpeg-DLLs aus third_party/ffmpeg/bin (muss in PATH stehen).
+[dev-dependencies]
+gameclip-testsupport.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

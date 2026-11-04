@@ -8,6 +8,7 @@ members = [
     "crates/gameclip-testsupport",
     "crates/gameclip-capture-win",
     "crates/gameclipd",
+    "crates/gameclip-worker",
 ]
 
 [workspace.package]

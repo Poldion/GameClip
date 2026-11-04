@@ -129,11 +129,14 @@ pub fn write(
         // Die Muxer-Zeitbasis kann nach write_header von der Spur abweichen.
         let stream_tb: Vec<ffi::AVRational> = out.streams().iter().map(|s| s.time_base).collect();
 
-        for (index, packet) in interleave(tracks) {
+        for (index, packet, duration) in interleave(tracks) {
             let track = tracks[index];
             let shift = unsafe { ffi::av_rescale_q(t0_us, MICROS, track.time_base) };
             let mut p = ref_packet(packet)?;
             p.set_stream_index(index as i32);
+            if p.duration <= 0 {
+                p.set_duration(duration);
+            }
             p.set_pts(p.pts - shift);
             p.set_dts(p.dts - shift);
             p.rescale_ts(track.time_base, stream_tb[index]);
@@ -150,25 +153,43 @@ pub fn write(
     Ok(())
 }
 
-/// Alle Pakete als (Spur, Paket), aufsteigend nach Dekodierzeit in µs; bei Gleichstand bleibt
-/// die Spurreihenfolge erhalten (stabile Sortierung).
-fn interleave<'a>(tracks: &[&'a Track<'a>]) -> Vec<(usize, &'a AVPacket)> {
-    let mut all: Vec<(i64, usize, &AVPacket)> = tracks
-        .iter()
-        .enumerate()
-        .flat_map(|(i, t)| {
-            t.packets.iter().map(move |p| {
-                let ts = if p.dts == ffi::AV_NOPTS_VALUE {
-                    p.pts
-                } else {
-                    p.dts
-                };
-                (unsafe { ffi::av_rescale_q(ts, t.time_base, MICROS) }, i, p)
-            })
-        })
-        .collect();
-    all.sort_by_key(|(ts, _, _)| *ts);
-    all.into_iter().map(|(_, i, p)| (i, p)).collect()
+/// Alle Pakete als (Spur, Paket, Ersatzdauer), aufsteigend nach Dekodierzeit in µs; bei
+/// Gleichstand bleibt die Spurreihenfolge erhalten (stabile Sortierung).
+fn interleave<'a>(tracks: &[&'a Track<'a>]) -> Vec<(usize, &'a AVPacket, i64)> {
+    let mut all: Vec<(i64, usize, &AVPacket, i64)> = Vec::new();
+    for (i, t) in tracks.iter().enumerate() {
+        let dts: Vec<i64> = t.packets.iter().map(decode_ts).collect();
+        let durations = fill_durations(&dts);
+        for ((p, ts), d) in t.packets.iter().zip(&dts).zip(durations) {
+            all.push((
+                unsafe { ffi::av_rescale_q(*ts, t.time_base, MICROS) },
+                i,
+                p,
+                d,
+            ));
+        }
+    }
+    all.sort_by_key(|(ts, _, _, _)| *ts);
+    all.into_iter().map(|(_, i, p, d)| (i, p, d)).collect()
+}
+
+fn decode_ts(p: &AVPacket) -> i64 {
+    if p.dts == ffi::AV_NOPTS_VALUE {
+        p.pts
+    } else {
+        p.dts
+    }
+}
+
+/// Ersatzdauer je Paket aus dem Abstand zum nächsten; das letzte erbt die vorige.
+/// Hardware-Encoder (AMF, gemessen 2026-11) setzen keine Dauer; ohne sie gibt der mov-Muxer
+/// dem letzten Bild die Länge 0 und es fehlt beim Abspielen.
+pub(crate) fn fill_durations(dts: &[i64]) -> Vec<i64> {
+    let mut out: Vec<i64> = dts.windows(2).map(|w| (w[1] - w[0]).max(0)).collect();
+    if !dts.is_empty() {
+        out.push(out.last().copied().unwrap_or(0));
+    }
+    out
 }
 
 /// Neue Referenz auf dieselben Daten; das Original bleibt im Ringpuffer.
@@ -183,4 +204,19 @@ fn ref_packet(src: &AVPacket) -> Result<AVPacket> {
 
 fn cstring(s: &str) -> Result<CString> {
     CString::new(s).map_err(|_| MediaError::InvalidPath(s.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fill_durations;
+
+    #[test]
+    fn last_packet_inherits_previous_duration() {
+        assert_eq!(
+            fill_durations(&[0, 16_666, 33_333, 50_000]),
+            [16_666, 16_667, 16_667, 16_667]
+        );
+        assert_eq!(fill_durations(&[5]), [0]);
+        assert!(fill_durations(&[]).is_empty());
+    }
 }

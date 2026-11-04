@@ -94,6 +94,10 @@ pub struct VideoEncoder {
     ctx: AVCodecContext,
     name: String,
     hardware: bool,
+    /// Bilder je Bildgruppe (= fps).
+    gop: u32,
+    /// Bilder seit dem letzten angeforderten IDR.
+    since_key: u32,
 }
 
 impl VideoEncoder {
@@ -150,6 +154,9 @@ impl VideoEncoder {
             ctx,
             name: name.into(),
             hardware,
+            gop: cfg.fps.max(1),
+            // Das erste Bild wird damit immer ein IDR.
+            since_key: cfg.fps.max(1),
         })
     }
 
@@ -167,7 +174,13 @@ impl VideoEncoder {
     }
 
     /// Sendet ein Bild mit Zeitstempel in µs. `keyframe` erzwingt ein IDR.
+    ///
+    /// Spätestens nach `fps` Bildern wird ebenfalls ein IDR verlangt. `gop_size` allein reicht
+    /// nicht: AMF mit `usage lowlatency`/`ultralowlatency` setzt dann nur den ersten Keyframe
+    /// (gemessen auf RX 6750 XT, 2026-11); der Ringpuffer braucht aber einen je Sekunde.
     pub fn send(&mut self, frame: &mut AVFrame, pts_us: i64, keyframe: bool) -> Result<()> {
+        let keyframe = keyframe || self.since_key >= self.gop;
+        self.since_key = if keyframe { 1 } else { self.since_key + 1 };
         frame.set_pts(pts_us);
         frame.set_pict_type(if keyframe {
             ffi::AV_PICTURE_TYPE_I

@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Aufnahme unter Windows (Design, Dateien 31–39). Bisher umgesetzt: der Videoweg
+//! WGC → Taktgeber → VideoProcessor → Encoder. Ton, Mixer und Ringpuffer folgen.
+
+#![cfg(windows)]
+
+pub mod pacer;
+pub mod video_pipeline;
+pub mod wgc;
+
+pub use video_pipeline::{VideoConfig, VideoEvent, VideoPacket, VideoPipeline, VideoStats};
+
+#[derive(Debug, thiserror::Error)]
+pub enum CaptureError {
+    #[error("Windows-Fehler: {0}")]
+    Windows(#[from] windows::core::Error),
+    #[error("GPU: {0}")]
+    Gpu(#[from] gameclip_gpu::GpuError),
+    #[error("Medien: {0}")]
+    Media(#[from] gameclip_media::MediaError),
+    #[error("kein Encoder nutzbar: {0}")]
+    NoEncoder(String),
+    #[error("Aufnahme-Thread beendet sich beim Start")]
+    StartFailed,
+}
+
+pub type Result<T> = std::result::Result<T, CaptureError>;

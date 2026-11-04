@@ -122,3 +122,75 @@ fn capture_chain_keeps_forced_keyframe() {
     // Keine B-Frames: Pakete kommen in Anzeigereihenfolge.
     assert!(packets.windows(2).all(|w| w[0].0 < w[1].0));
 }
+
+/// Kodiert `count` Bilder auf dem Hardware-Encoder; `force` sagt je Bild, ob ein IDR verlangt
+/// wird. Liefert die Bildnummern der Keyframes oder `None` ohne Hardware-Encoder.
+fn hw_keyframes(count: i64, force: impl Fn(i64) -> bool) -> Option<(String, Vec<i64>)> {
+    let gpu = GpuDevice::for_monitor(MonitorTarget::Primary).unwrap();
+    let name = probe(&gpu, &CFG)
+        .into_iter()
+        .find(|c| c.ok && is_hardware(&c.name))?
+        .name;
+    let src = bgra_source(&gpu, CFG.width, CFG.height);
+    let conv = Converter::new(
+        &gpu,
+        InFormat::Bgra,
+        (CFG.width, CFG.height),
+        (CFG.width, CFG.height),
+    )
+    .unwrap();
+    let device = HwDevice::from_gpu(&gpu).unwrap();
+    let mut frames = HwFrames::new(&device, CFG.width, CFG.height).unwrap();
+    let mut enc = VideoEncoder::open(&name, &CFG, Some(&frames)).unwrap();
+    let frame_us = i64::from(TIME_BASE_DEN) / i64::from(CFG.fps);
+    let mut keys = Vec::new();
+    let mut collect = |enc: &mut VideoEncoder| {
+        while let Some(p) = enc.receive().unwrap() {
+            if p.flags & ffi::AV_PKT_FLAG_KEY as i32 != 0 {
+                keys.push(p.pts / frame_us);
+            }
+        }
+    };
+    for i in 0..count {
+        let mut f = frames.get().unwrap();
+        {
+            let (tex, slice) = f.texture().unwrap();
+            conv.run(
+                TexRef {
+                    tex: &src,
+                    array_slice: 0,
+                },
+                TexRef {
+                    tex,
+                    array_slice: slice,
+                },
+            )
+            .unwrap();
+        }
+        enc.send(&mut f.frame, i * frame_us, force(i)).unwrap();
+        collect(&mut enc);
+    }
+    enc.flush().unwrap();
+    collect(&mut enc);
+    Some((name, keys))
+}
+
+#[test]
+fn regular_keyframe_every_second() {
+    // GOP = fps: ohne Anforderung ein Keyframe je Sekunde (Bild 0, 60, 120, 180).
+    let Some((name, keys)) = hw_keyframes(200, |i| i == 0) else {
+        return;
+    };
+    println!("{name}: Keyframes bei Bild {keys:?}");
+    assert_eq!(keys, [0, 60, 120, 180]);
+}
+
+#[test]
+fn forced_keyframe_restarts_the_second() {
+    // IDR bei Bild 37 → nächster regulärer Keyframe eine Sekunde später (97), nicht bei 60.
+    let Some((name, keys)) = hw_keyframes(200, |i| i == 37) else {
+        return;
+    };
+    println!("{name}: Keyframes bei Bild {keys:?}");
+    assert_eq!(keys, [0, 37, 97, 157]);
+}

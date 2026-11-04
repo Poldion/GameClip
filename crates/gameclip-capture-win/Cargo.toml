@@ -1,6 +1,6 @@
 [package]
 name = "gameclip-capture-win"
-description = "Aufnahme unter Windows: WGC, Taktgeber, Videoweg bis zum Encoder (später WASAPI, Mixer, Ringpuffer)"
+description = "Aufnahme unter Windows: WGC, Taktgeber, WASAPI, Mixer, Ringpuffer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,13 @@ license.workspace = true
 [target.'cfg(windows)'.dependencies]
 audioadapter-buffers.workspace = true
 crossbeam-channel.workspace = true
-rubato.workspace = true
-wasapi.workspace = true
+gameclip-core.workspace = true
 gameclip-gpu.workspace = true
 gameclip-media.workspace = true
 rsmpeg.workspace = true
+rubato.workspace = true
 thiserror.workspace = true
+wasapi.workspace = true
 windows = { workspace = true, features = [
     "Foundation",
     "Graphics",

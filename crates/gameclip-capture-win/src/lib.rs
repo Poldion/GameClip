@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Aufnahme unter Windows (Design, Dateien 31–39). Bisher umgesetzt: der Videoweg
 //! WGC → Taktgeber → VideoProcessor → Encoder und die Audio-Pipeline (System, Mikrofon,
-//! Mischung). Discord und der Ringpuffer folgen.
+//! Mischung) und der Ringpuffer. Discord folgt in M2.
 
 #![cfg(windows)]
 
 pub mod audio;
 pub mod pacer;
+pub mod ring;
 pub mod video_pipeline;
 pub mod wgc;
 

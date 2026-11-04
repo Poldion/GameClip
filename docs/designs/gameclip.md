@@ -1234,6 +1234,13 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `push`, `evict` (ganze Video-Bildgruppen, Audio vor dem ältesten Keyframe), `snapshot(from_us, to_us) -> Snapshot` (nur neuester Abschnitt, schneidet an Lücken wie an Abschnittsgrenzen).
     *   `pub trait PacketSource { fn wait_for(&self, pts_us: u64, timeout: Duration) -> bool; fn snapshot(&self, from_us: u64, to_us: u64) -> Snapshot; }` wird hier definiert und von `Ring` umgesetzt. `gameclipd::save` nutzt nur diesen Trait, damit Tests eine Attrappe einsetzen können.
     *   **Pool erschöpft:** Videopakete bis zum nächsten Keyframe verwerfen, Audio im selben Zeitraum verwerfen, `video_pipeline.force_keyframe()` aufrufen, beim ersten Paket danach `gap_before = true`.
+    *   **Umgesetzt 2026-11:**
+        *   **Schnittstelle:** `Ring::new(RingConfig { pool_blocks, duration_us, block_bytes })`, dazu `RingConfig::from_forecast(&Forecast, buffer_seconds)`. `push(Stream, pts_us, dts_us, keyframe, &[u8]) -> PushOutcome { Stored, Dropped, NeedKeyframe }`; bei `NeedKeyframe` ruft der Aufrufer `force_keyframe()`. Außerdem `new_section()` und `PacketSource { wait_for, snapshot }`.
+        *   **Speicher:** Blöcke sind `Arc<BlockBuf>` mit Rohzeiger, der Index und die Schnappschüsse halten Klone. Ein Block ist frei, wenn `Arc::strong_count == 1`; das wird unter dem Mutex geprüft, unter dem auch alle Klone entstehen. Beim Anlegen wird jede Seite einmal beschrieben, damit der Speicher wirklich belegt ist.
+        *   **Verwerfen nach Platz:** geschieht schon vor „Pool erschöpft“. Bevor eine Lücke entsteht, werden alte Bildgruppen verworfen, deren Blöcke kein Schnappschuss hält.
+        *   **Grenzfall (beim Testen gefunden):** Passt die laufende Bildgruppe nicht mehr neben den gehaltenen Schnappschuss, gibt es nur noch diese eine Bildgruppe im Index, und `evict_gop` kann nichts verwerfen. Deshalb darf ein **neuer Keyframe auch die letzte alte Bildgruppe verdrängen**, sonst käme die Aufnahme nach der Lücke nie wieder in Gang.
+        *   **Schnappschuss:** beginnt am letzten Keyframe ≤ `from_us` des neuesten Abschnitts. Eine Lücke dahinter schneidet ihn, dann ist `truncated = true`. Ton wird ab dem Paket genommen, das t0 überdeckt.
+        *   **Gemessen:** alle sieben Fälle aus Datei 39 grün, darunter 30 s Weiterschreiben bei gehaltenem Schnappschuss (Daten unverändert) und die Lücke bei vollem Pool (genau eine IDR-Anforderung, weiter am nächsten Keyframe, Ton aus der Lücke verworfen).
 
 ##### 39. `crates/gameclip-capture-win/tests/ring.rs` (Create)
 

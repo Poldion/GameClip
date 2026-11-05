@@ -31,6 +31,10 @@ struct Recording {
 }
 
 fn record(play_tone: bool) -> Recording {
+    record_with(play_tone, false)
+}
+
+fn record_with(play_tone: bool, discord: bool) -> Recording {
     let has_mic = mic::list_devices().map(|d| !d.is_empty()).unwrap_or(false);
     // Ausgeschlossen wird ein untätiger Hilfsprozess, nicht der Test selbst: EXCLUDE gilt für den
     // ganzen Prozessbaum, und ffplay ist ein Kind des Tests (sein Ton fehlte sonst zu Recht).
@@ -47,6 +51,7 @@ fn record(play_tone: bool) -> Recording {
                 device_id: None,
                 gain_db: 0.0,
             }),
+            discord_gain_db: discord.then_some(0.0),
         },
         tx,
     )
@@ -268,4 +273,23 @@ fn goertzel(samples: &[f32], freq: f64) -> f64 {
         s1 = s;
     }
     (s1 * s1 + s2 * s2 - k * s1 * s2) / (samples.len() as f64).powi(2)
+}
+
+/// Mit Discord-Spur: vier Spuren auf derselben Zeitachse. Läuft Discord nicht, ist die Spur still,
+/// aber vollständig; läuft es, schließt „System“ Discord aus statt des Hilfsprozesses.
+#[test]
+fn records_discord_track_on_the_same_timeline() {
+    let root = gameclip_capture_win::audio::discord::find_root();
+    println!("Discord-Wurzelprozess: {root:?}");
+    let r = record_with(false, true);
+    let tracks: Vec<Track> = r.params.iter().map(|(t, _)| *t).collect();
+    assert!(tracks.contains(&Track::Discord), "{tracks:?}");
+    let count = |t: Track| r.packets.iter().filter(|p| p.0 == t).count();
+    let (mix, discord) = (count(Track::Mix), count(Track::Discord));
+    assert!(
+        discord > 0 && discord.abs_diff(mix) <= 2,
+        "Mischung {mix}, Discord {discord}"
+    );
+    let first = r.packets.iter().find(|p| p.0 == Track::Discord).unwrap().2;
+    assert_eq!(first - r.start_us, -21_333);
 }

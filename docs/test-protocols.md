@@ -67,6 +67,15 @@ ruhigen Rechner mit Lautsprechern.
 | Datum | Ergebnis |
 | --- | --- |
 | 2026-11 | Mischung und `.m4a` deckungsgleich (gleicher Start, gleiche Länge in Samples, Test `save`). Testton per Loopback bei laufendem Spiel nur in 1 von 3 Läufen erkannt – Ursache offen. 30-min-Versatz offen. |
+| 2026-11-05 | M2, automatisch: Mit Discord-Spur liefert die Pipeline vier Spuren auf derselben Zeitachse (Test `records_discord_track_on_the_same_timeline`, Discord lief, INCLUDE auf Discord und EXCLUDE von Discord aus „System“ starten ohne Fehler). Hörprobe offen. |
+
+**Schritte M2 (Discord):** In den Einstellungen „Discord als eigene Spur aufnehmen“ einschalten.
+In einem Discord-Sprachkanal jemanden sprechen lassen, gleichzeitig ein Spiel mit Ton laufen
+lassen, Clip speichern und mit „Mit getrennten Spuren exportieren“ exportieren. Prüfen: Die
+Stimme ist in „Discord“ und in der Mischung, aber **nicht** in „System“. Die Spiel-Geräusche
+stehen in „System“, aber nicht in „Discord“. Dann Discord beenden und neu starten (innerhalb von
+2 s wird neu gebunden), noch einmal speichern. Der Bestätigungston darf dabei in keiner Spur zu
+hören sein.
 
 ## S6 – Teilen (M0)
 

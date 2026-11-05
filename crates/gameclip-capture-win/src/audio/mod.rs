@@ -7,12 +7,13 @@
 //! kodiert die Mischung (160 kbit/s, mit Lautstärke und Limiter) und jede Quelle unverändert als
 //! Einzelspur (128 kbit/s). Zeitstempel sind QPC-µs wie beim Video.
 
+pub mod discord;
 pub mod loopback;
 pub mod mic;
 pub mod mixer;
 pub mod resample;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -67,6 +68,9 @@ pub struct AudioConfig {
     pub exclude_pid: u32,
     pub system_gain_db: f32,
     pub mic: Option<MicConfig>,
+    /// Discord als eigene Spur (Lautstärke in dB); `None` = aus. Dann wird Discord statt
+    /// `exclude_pid` aus „System“ ausgeschlossen, solange es läuft.
+    pub discord_gain_db: Option<f32>,
 }
 
 pub struct AudioPacket {
@@ -100,6 +104,8 @@ pub struct AudioPipeline {
     stop: Arc<AtomicBool>,
     mic_paused: Arc<AtomicBool>,
     mutes: Arc<Mutex<Vec<(i64, i64)>>>,
+    binding: Option<Arc<Binding>>,
+    gains: Arc<Gains>,
     threads: Vec<JoinHandle<()>>,
     start_us: i64,
     params: Vec<(Track, AVCodecParameters)>,
@@ -120,6 +126,9 @@ impl AudioPipeline {
         if cfg.mic.is_some() {
             encoders.push((Track::Mic, AudioEncoder::new_fast(TRACK_BPS)?));
         }
+        if cfg.discord_gain_db.is_some() {
+            encoders.push((Track::Discord, AudioEncoder::new_fast(TRACK_BPS)?));
+        }
         let params = encoders
             .iter()
             .map(|(t, e)| (*t, e.codec_parameters()))
@@ -127,12 +136,39 @@ impl AudioPipeline {
 
         let mut threads = Vec::new();
         let pid = cfg.exclude_pid;
-        threads.push(spawn_source(
-            Track::System,
-            tx.clone(),
-            stop.clone(),
-            move || loopback::open_loopback(pid, false),
-        )?);
+        let binding = cfg.discord_gain_db.map(|_| {
+            Arc::new(Binding {
+                discord: AtomicU32::new(discord::find_root().unwrap_or(0)),
+                generation: AtomicU64::new(0),
+            })
+        });
+        match &binding {
+            None => threads.push(spawn_source(
+                Track::System,
+                tx.clone(),
+                stop.clone(),
+                move || loopback::open_loopback(pid, false),
+            )?),
+            Some(b) => {
+                // System schließt Discord aus, solange es läuft, sonst den eigenen Prozessbaum;
+                // die Discord-Spur nimmt nur Discord auf. Ändert sich Discord, binden beide neu.
+                threads.push(spawn_rebinding(
+                    Track::System,
+                    tx.clone(),
+                    stop.clone(),
+                    b.clone(),
+                    pid,
+                )?);
+                threads.push(spawn_rebinding(
+                    Track::Discord,
+                    tx.clone(),
+                    stop.clone(),
+                    b.clone(),
+                    pid,
+                )?);
+                threads.push(spawn_discord_watch(stop.clone(), b.clone())?);
+            }
+        }
         if let Some(m) = &cfg.mic {
             let id = m.device_id.clone();
             threads.push(spawn_source(
@@ -144,12 +180,18 @@ impl AudioPipeline {
         }
         drop(tx);
 
+        let gains = Arc::new(Gains::default());
+        gains.set(
+            cfg.system_gain_db,
+            cfg.mic.as_ref().map_or(0.0, |m| m.gain_db),
+            cfg.discord_gain_db.unwrap_or(0.0),
+        );
         let mixer = Mixer {
             start_us,
             system: SourceTrack::new(start_us),
             mic: cfg.mic.as_ref().map(|_| SourceTrack::new(start_us)),
-            system_gain: db_to_gain(cfg.system_gain_db),
-            mic_gain: cfg.mic.as_ref().map_or(1.0, |m| db_to_gain(m.gain_db)),
+            discord: cfg.discord_gain_db.map(|_| SourceTrack::new(start_us)),
+            gains: gains.clone(),
             limiter: Limiter::default(),
             prev: None,
             encoders,
@@ -165,6 +207,8 @@ impl AudioPipeline {
             stop,
             mic_paused,
             mutes,
+            binding,
+            gains,
             threads,
             start_us,
             params,
@@ -184,6 +228,20 @@ impl AudioPipeline {
     /// Mikrofon pausieren: die Spur bleibt, enthält aber Stille.
     pub fn set_mic_paused(&self, paused: bool) {
         self.mic_paused.store(paused, Ordering::Relaxed);
+    }
+
+    /// `true`, wenn „System“ gerade Discord statt des eigenen Prozessbaums ausschließt; dann
+    /// landet der eigene Bestätigungston in „System“ und muss per `mute_system` heraus (Q11).
+    pub fn own_sound_captured(&self) -> bool {
+        self.binding
+            .as_ref()
+            .is_some_and(|b| b.discord.load(Ordering::Relaxed) != 0)
+    }
+
+    /// Lautstärken der Mischung in dB (System, Mikrofon, Discord); gilt ab dem nächsten Block.
+    /// Die Einzelspuren bleiben unverändert.
+    pub fn set_gains_db(&self, system: f32, mic: f32, discord: f32) {
+        self.gains.set(system, mic, discord);
     }
 
     /// Schaltet „System“ im Zeitfenster stumm (eigener Bestätigungston, D26).
@@ -222,9 +280,87 @@ fn spawn_source(
         .name(format!("gameclip-audio-{}", track.title()))
         .spawn(move || {
             let _ = wasapi::initialize_mta();
-            let result = open().and_then(|c| loopback::run_capture(c, track, &tx, &stop));
+            let result = open().and_then(|c| {
+                loopback::run_capture(c, track, &tx, || stop.load(Ordering::Relaxed))
+            });
             if let Err(e) = result {
                 let _ = tx.send(SourceMsg::Failed(track, e));
+            }
+        })
+        .map_err(|_| CaptureError::StartFailed)
+}
+
+/// Gemeinsamer Stand der Discord-Erkennung für „System“ und „Discord“.
+struct Binding {
+    /// PID des Discord-Wurzelprozesses, 0 = läuft nicht.
+    discord: AtomicU32,
+    /// Zählt bei jeder Änderung hoch; die Quellen binden dann neu.
+    generation: AtomicU64,
+}
+
+/// Quelle, die bei jeder Änderung von `binding` neu bindet. „System“ schließt Discord aus,
+/// solange es läuft, sonst `own_pid`; „Discord“ nimmt nur den Discord-Baum auf und wartet
+/// ohne Discord. Die Lücke beim Umschalten füllt der Mixer mit Stille.
+fn spawn_rebinding(
+    track: Track,
+    tx: Sender<SourceMsg>,
+    stop: Arc<AtomicBool>,
+    binding: Arc<Binding>,
+    own_pid: u32,
+) -> Result<JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name(format!("gameclip-audio-{}", track.title()))
+        .spawn(move || {
+            let _ = wasapi::initialize_mta();
+            while !stop.load(Ordering::Relaxed) {
+                let generation = binding.generation.load(Ordering::Acquire);
+                let discord = binding.discord.load(Ordering::Acquire);
+                let changed_or_stopped = || {
+                    stop.load(Ordering::Relaxed)
+                        || binding.generation.load(Ordering::Acquire) != generation
+                };
+                let target = match (track, discord) {
+                    (Track::Discord, 0) => None,
+                    (Track::Discord, pid) => Some((pid, true)),
+                    (_, 0) => Some((own_pid, false)),
+                    (_, pid) => Some((pid, false)),
+                };
+                let result = match target {
+                    Some((pid, include)) => loopback::open_loopback(pid, include)
+                        .and_then(|c| loopback::run_capture(c, track, &tx, changed_or_stopped)),
+                    None => Ok(()),
+                };
+                if let Err(e) = result {
+                    let _ = tx.send(SourceMsg::Failed(track, e));
+                }
+                // Bis zur nächsten Änderung warten (ohne Discord oder nach einem Fehler).
+                while !changed_or_stopped() {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        })
+        .map_err(|_| CaptureError::StartFailed)
+}
+
+/// Prüft alle `discord::POLL`, ob Discord gestartet, beendet oder neu gestartet wurde.
+fn spawn_discord_watch(stop: Arc<AtomicBool>, binding: Arc<Binding>) -> Result<JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("gameclip-discord-watch".into())
+        .spawn(move || {
+            let step = std::time::Duration::from_millis(100);
+            let mut waited = std::time::Duration::ZERO;
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::sleep(step);
+                waited += step;
+                if waited < discord::POLL {
+                    continue;
+                }
+                waited = std::time::Duration::ZERO;
+                let now = discord::find_root().unwrap_or(0);
+                if binding.discord.swap(now, Ordering::AcqRel) != now {
+                    tracing::info!("Discord-Wurzelprozess jetzt {now}, Ton wird neu gebunden");
+                    binding.generation.fetch_add(1, Ordering::AcqRel);
+                }
             }
         })
         .map_err(|_| CaptureError::StartFailed)
@@ -234,11 +370,11 @@ struct Mixer {
     start_us: i64,
     system: SourceTrack,
     mic: Option<SourceTrack>,
-    system_gain: f32,
-    mic_gain: f32,
+    discord: Option<SourceTrack>,
+    gains: Arc<Gains>,
     limiter: Limiter,
     /// Einzelspuren des vorigen Blocks (eine Block Verzögerung wie der Limiter).
-    prev: Option<(Block, Option<Block>)>,
+    prev: Option<Singles>,
     encoders: Vec<(Track, AudioEncoder)>,
 }
 
@@ -268,7 +404,12 @@ impl Mixer {
                                 m.push(c.qpc_us, &c.samples, c.silent);
                             }
                         }
-                        _ => {}
+                        Track::Discord => {
+                            if let Some(d) = self.discord.as_mut() {
+                                d.push(c.qpc_us, &c.samples, c.silent);
+                            }
+                        }
+                        Track::Mix => {}
                     },
                     SourceMsg::Failed(track, error) => {
                         let _ = sink.send(AudioEvent::SourceFailed { track, error });
@@ -325,6 +466,11 @@ impl Mixer {
             }
             b
         });
+        let discord = self.discord.as_mut().map(|d| {
+            let mut b = [0.0f32; BLOCK * CHANNELS];
+            d.pull(k, &mut b);
+            b
+        });
 
         if k % LEVEL_EVERY == 0 {
             let _ = sink.send(AudioEvent::Levels {
@@ -334,25 +480,36 @@ impl Mixer {
             });
         }
 
-        let mut sources: Vec<(&Block, f32)> = vec![(&system, self.system_gain)];
+        let [system_gain, mic_gain, discord_gain] = self.gains.get();
+        let mut sources: Vec<(&Block, f32)> = vec![(&system, system_gain)];
         if let Some(m) = &mic {
-            sources.push((m, self.mic_gain));
+            sources.push((m, mic_gain));
+        }
+        if let Some(d) = &discord {
+            sources.push((d, discord_gain));
         }
         let mixed = mix(&sources);
         let limited = self.limiter.process(&mixed);
-        let prev = self.prev.replace((system, mic));
-        let (Some(mix_block), Some((sys_prev, mic_prev))) = (limited, prev) else {
+        let prev = self.prev.replace(Singles {
+            system,
+            mic,
+            discord,
+        });
+        let (Some(mix_block), Some(singles)) = (limited, prev) else {
             return true;
         };
         for (track, enc) in &mut self.encoders {
             let input: &Block = match track {
                 Track::Mix => &mix_block,
-                Track::System => &sys_prev,
-                Track::Mic => match &mic_prev {
+                Track::System => &singles.system,
+                Track::Mic => match &singles.mic {
                     Some(b) => b,
                     None => continue,
                 },
-                Track::Discord => continue,
+                Track::Discord => match &singles.discord {
+                    Some(b) => b,
+                    None => continue,
+                },
             };
             let Ok(packets) = enc.push(input) else {
                 continue;
@@ -365,6 +522,31 @@ impl Mixer {
         }
         true
     }
+}
+
+/// Lautstärken der Mischung als lineare Faktoren, ohne Sperre zwischen Dienst und Mixer.
+#[derive(Default)]
+struct Gains([AtomicU32; 3]);
+
+impl Gains {
+    fn set(&self, system_db: f32, mic_db: f32, discord_db: f32) {
+        for (slot, db) in self.0.iter().zip([system_db, mic_db, discord_db]) {
+            slot.store(db_to_gain(db).to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    fn get(&self) -> [f32; 3] {
+        self.0
+            .each_ref()
+            .map(|g| f32::from_bits(g.load(Ordering::Relaxed)))
+    }
+}
+
+/// Einzelspuren eines Blocks, ohne Lautstärke.
+struct Singles {
+    system: Block,
+    mic: Option<Block>,
+    discord: Option<Block>,
 }
 
 fn packet_event(track: Track, packet: AVPacket, start_us: i64) -> AudioEvent {

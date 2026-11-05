@@ -79,6 +79,10 @@ impl RecorderConfig {
                     device_id: settings.audio.mic_device.clone(),
                     gain_db: settings.audio.gain_db.mic,
                 }),
+                discord_gain_db: settings
+                    .audio
+                    .discord_enabled
+                    .then_some(settings.audio.gain_db.discord),
             },
             ring: RingConfig::from_forecast(&fc, c.buffer_seconds),
         }

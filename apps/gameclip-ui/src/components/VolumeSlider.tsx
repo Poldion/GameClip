@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Lautstärke −30 bis +12 dB, Doppelklick setzt 0 dB (Design, Datei 65).
+// Lautstärke −30 bis +12 dB, Doppelklick setzt 0 dB (Design, Datei 65). `onChange` folgt dem
+// Regler, `onCommit` kommt beim Loslassen (und beim Doppelklick), damit nicht jeder Schritt
+// gespeichert wird.
 
 import css from "./VolumeSlider.module.css";
 
@@ -11,7 +13,14 @@ export function gainLabel(db: number): string {
   return `${db > 0 ? "+" : "−"}${Math.abs(db).toLocaleString("de-DE", { maximumFractionDigits: 1 })} dB`;
 }
 
-export function VolumeSlider(props: { label: string; value: number; onChange: (db: number) => void; disabled?: boolean }) {
+export function VolumeSlider(props: {
+  label: string;
+  value: number;
+  onChange: (db: number) => void;
+  onCommit?: (db: number) => void;
+  disabled?: boolean;
+}) {
+  const commit = (db: number) => props.onCommit?.(db);
   return (
     <label className={css.row}>
       <span className={css.label}>{props.label}</span>
@@ -24,7 +33,12 @@ export function VolumeSlider(props: { label: string; value: number; onChange: (d
         disabled={props.disabled}
         aria-label={props.label}
         onChange={(e) => props.onChange(Number(e.target.value))}
-        onDoubleClick={() => props.onChange(0)}
+        onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+        onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+        onDoubleClick={() => {
+          props.onChange(0);
+          commit(0);
+        }}
       />
       <span className={css.value}>{gainLabel(props.value)}</span>
     </label>

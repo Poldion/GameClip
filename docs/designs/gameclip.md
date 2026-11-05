@@ -1215,6 +1215,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 *   **Änderungen:**
     *   `mic.rs`: Shared-Mode-Aufnahme vom Gerät aus `audio.mic_device` bzw. dem Standardgerät; Neubinden bei `IMMNotificationClient`; bei Pause Stille; Pegel (RMS in dBFS) für `MicLevel`.
     *   `discord.rs`: alle `DISCORD_POLL_S` per `CreateToolhelp32Snapshot` nach `Discord.exe`, `DiscordPTB.exe`, `DiscordCanary.exe`; Wurzel = Elternprozess hat nicht denselben Namen; kein Handle. Bei Änderung beide Ströme neu binden. Erst ab M2 aktiv.
+    *   **Umgesetzt 2026-11 (M2):**
+        *   Mit `audio.discord_enabled` hat die Pipeline immer vier Spuren (Mischung, System, Mikrofon, Discord). Encoder, Ring und Muxer bleiben deshalb gleich, wenn Discord startet oder endet. Ohne Discord ist die Spur still.
+        *   Ein Thread prüft alle 2 s die Wurzel. Bei einer Änderung zählt er eine Generation hoch. Die Quellen „System“ und „Discord“ beenden dann ihre Erfassung (`run_capture` nimmt dafür eine Stop-Funktion statt eines Flags) und binden neu: „System“ schließt Discord aus, solange es läuft, sonst den eigenen Prozessbaum; „Discord“ nimmt nur den Discord-Baum auf. Die kurze Lücke füllt der Mixer mit Stille.
+        *   Laufen mehrere Varianten, gewinnt die kleinste PID, damit die Wahl stabil bleibt.
+        *   `AudioPipeline::own_sound_captured()` meldet, ob gerade Discord statt des eigenen Prozessbaums ausgeschlossen ist. Nur dann schaltet der Dienst „System“ für die Dauer des Bestätigungstons stumm (`mute_system`).
+        *   Die Einstellung wirkt über den Neustart der Pipeline wie die anderen Aufnahme-Einstellungen.
 
 ##### 37. `crates/gameclip-capture-win/src/audio/resample.rs`, `src/audio/mixer.rs` (Create)
 

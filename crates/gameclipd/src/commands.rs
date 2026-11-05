@@ -429,6 +429,12 @@ impl Service {
         }
         if Settings::pipeline_changed(old, &self.settings) {
             self.feed(StateEvent::SettingsChanged { pipeline: true });
+        } else if old.audio.gain_db != self.settings.audio.gain_db
+            && let Some(a) = self.recorder.as_ref().and_then(|r| r.audio())
+        {
+            // Lautstärken wirken sofort, ohne die Aufnahme neu zu starten.
+            let g = &self.settings.audio.gain_db;
+            a.set_gains_db(g.system, g.mic, g.discord);
         }
     }
 

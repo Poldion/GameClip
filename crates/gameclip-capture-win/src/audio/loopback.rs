@@ -5,8 +5,6 @@
 //! Format fest 48 kHz Float Stereo; `autoconvert` lässt Windows umrechnen. Zeitstempel aus
 //! `pu64QPCPosition` (100 ns) in µs.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use crossbeam_channel::Sender;
 use wasapi::{AudioClient, Direction, SampleType, StreamMode, WaveFormat};
 
@@ -37,12 +35,12 @@ pub fn format() -> WaveFormat {
     WaveFormat::new(32, 32, &SampleType::Float, 48_000, 2, None)
 }
 
-/// Erfasst bis `stop` und schickt die Blöcke an den Mixer.
+/// Erfasst, bis `stop()` wahr wird, und schickt die Blöcke an den Mixer.
 pub fn run_capture(
     mut client: AudioClient,
     track: Track,
     tx: &Sender<SourceMsg>,
-    stop: &AtomicBool,
+    stop: impl Fn() -> bool,
 ) -> Result<(), String> {
     let err = |e: wasapi::WasapiError| e.to_string();
     let format = format();
@@ -62,7 +60,7 @@ pub fn run_capture(
     client.start_stream().map_err(err)?;
 
     let mut bytes = Vec::new();
-    while !stop.load(Ordering::Relaxed) {
+    while !stop() {
         if event.wait_for_event(WAIT_MS).is_err() {
             continue;
         }

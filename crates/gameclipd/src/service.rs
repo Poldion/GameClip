@@ -737,9 +737,15 @@ impl Service {
             Effect::QueueSave => {}
             Effect::PlaySound(s) => {
                 if self.settings.sound.enabled {
-                    // Ausgeschlossen ist der eigene Prozessbaum: der Ton landet nicht im Clip (D26).
-                    // Mit Discord-Ausschluss (M2) kommt hier `mute_system` für das Fenster dazu.
-                    let _ = self.sound.play(*s, self.settings.sound.volume);
+                    // Meist ist der eigene Prozessbaum ausgeschlossen: der Ton landet nicht im
+                    // Clip (D26). Schließt „System“ gerade Discord aus (Q11), wird es für die
+                    // Dauer des Tons stummgeschaltet.
+                    let (from_us, duration_us) = self.sound.play(*s, self.settings.sound.volume);
+                    if let Some(a) = self.recorder.as_ref().and_then(|r| r.audio())
+                        && a.own_sound_captured()
+                    {
+                        a.mute_system(from_us, duration_us);
+                    }
                 }
             }
             Effect::Notify(n) => {

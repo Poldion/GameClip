@@ -184,9 +184,22 @@ export function Settings() {
           <input type="checkbox" checked={a.discord_enabled} onChange={(e) => change("audio.discord_enabled", e.target.checked)} />
           Discord als eigene Spur aufnehmen
         </label>
-        <VolumeSlider label="Spiel und System" value={a.gain_db.system} onChange={(v) => change("audio.gain_db.system", v)} />
-        <VolumeSlider label="Mikrofon" value={a.gain_db.mic} disabled={!a.mic_enabled} onChange={(v) => change("audio.gain_db.mic", v)} />
-        <VolumeSlider label="Discord" value={a.gain_db.discord} disabled={!a.discord_enabled} onChange={(v) => change("audio.gain_db.discord", v)} />
+        {(
+          [
+            ["system", "Spiel und System", false],
+            ["mic", "Mikrofon", !a.mic_enabled],
+            ["discord", "Discord", !a.discord_enabled],
+          ] as const
+        ).map(([k, label, disabled]) => (
+          <VolumeSlider
+            key={k}
+            label={label}
+            value={a.gain_db[k]}
+            disabled={disabled}
+            onChange={(v) => change(`audio.gain_db.${k}`, v, false)}
+            onCommit={(v) => void save(`audio.gain_db.${k}`, v)}
+          />
+        ))}
         {err("audio.gain_db.system")}
       </fieldset>
 

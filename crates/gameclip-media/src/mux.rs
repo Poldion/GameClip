@@ -206,6 +206,90 @@ fn cstring(s: &str) -> Result<CString> {
     CString::new(s).map_err(|_| MediaError::InvalidPath(s.into()))
 }
 
+/// Schreibt `src` ohne Neukodieren nach `dst` um und setzt dabei Tags (z. B. eine neue
+/// `gameclip_id` beim Übernehmen einer Kopie). Übrige Tags, Spurtitel und Standard-Kennzeichen
+/// bleiben; die Zeitstempel bleiben, eine Edit-List entsteht daraus erneut.
+pub fn remux_with_tags(src: &Path, dst: &Path, overrides: &[(&str, &str)]) -> Result<()> {
+    let mut input = crate::demux::open_input(src)?;
+    struct In {
+        params: AVCodecParameters,
+        time_base: ffi::AVRational,
+        title: String,
+        default: bool,
+        packets: Vec<AVPacket>,
+    }
+    let mut streams: Vec<In> = input
+        .streams()
+        .iter()
+        .map(|s| In {
+            params: s.codecpar().clone(),
+            time_base: s.time_base,
+            title: s
+                .metadata()
+                .and_then(|m| {
+                    m.iter()
+                        .find(|e| e.key() == c"handler_name")
+                        .map(|e| e.value().to_string_lossy().into_owned())
+                })
+                .unwrap_or_default(),
+            default: s.disposition & ffi::AV_DISPOSITION_DEFAULT as i32 != 0,
+            packets: Vec::new(),
+        })
+        .collect();
+    let mut tags: Vec<(String, String)> = input
+        .metadata()
+        .map(|d| {
+            d.iter()
+                .map(|e| {
+                    (
+                        e.key().to_string_lossy().into_owned(),
+                        e.value().to_string_lossy().into_owned(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    // Vom Muxer selbst gesetzte Schlüssel nicht doppelt schreiben.
+    tags.retain(|(k, _)| {
+        !overrides.iter().any(|(o, _)| o == k)
+            && !matches!(
+                k.as_str(),
+                "major_brand" | "minor_version" | "compatible_brands" | "encoder"
+            )
+    });
+    tags.extend(
+        overrides
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string())),
+    );
+    while let Some(p) = input.read_packet()? {
+        if let Some(s) = streams.get_mut(p.stream_index as usize) {
+            s.packets.push(p);
+        }
+    }
+    drop(input);
+    let tracks: Vec<Track<'_>> = streams
+        .iter()
+        .map(|s| Track {
+            params: &s.params,
+            time_base: s.time_base,
+            packets: &s.packets,
+            title: &s.title,
+            default: s.default,
+        })
+        .collect();
+    let refs: Vec<&Track<'_>> = tracks.iter().collect();
+    let tag_refs: Vec<(&str, &str)> = tags.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let container = if dst
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("m4a"))
+    {
+        Container::M4a
+    } else {
+        Container::Mp4
+    };
+    write(dst, container, &refs, &tag_refs, 0, true)
+}
 #[cfg(test)]
 mod tests {
     use super::fill_durations;

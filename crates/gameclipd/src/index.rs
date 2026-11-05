@@ -346,6 +346,19 @@ impl Index {
         })
     }
 
+    /// Übernommene Kopie: neuer Tag, `ok`, mit Stern, ohne Einzelspuren (Design, Datei 45).
+    pub fn adopt(&self, row_id: u32, new_tag: &str, size_bytes: u64) -> Result<()> {
+        self.write(|db| {
+            db.execute(
+                "UPDATE clips SET tag_id = ?2, status = 'ok', starred = 1, has_tracks = 0,
+                                  size_bytes = ?3
+                 WHERE row_id = ?1",
+                params![row_id, new_tag, size_bytes as i64],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn set_missing(&self, row_id: u32, missing_count: u32) -> Result<()> {
         self.write(|db| {
             db.execute(

@@ -996,6 +996,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 *   **Änderungen:** Rahmung, Hülle, die Nachrichtentabelle aus Datei 24, Fehlercodes, Versionsregel. Ein Test in Datei 25 parst jedes JSON-Beispiel aus dieser Datei gegen `gameclip-protocol`. Die interne Kommandozeile (Datei 41) wird nicht beschrieben.
 *   **Begründung:** Vertrag für die spätere Linux-Version.
+*   **Umgesetzt 2026-11:** Der Test liest jeden ```` ```json ````-Block; steht ein Antworttyp hinter `json` (z. B. ```` ```json ListClipsReply ````), wird auch `body` als dieser Typ gelesen.
 
 ##### 12. `docs/test-protocols.md`, `docs/clip-file-format.md` (Create)
 
@@ -1402,6 +1403,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `save`: Platte voll (Ordner auf schreibgeschütztem Pfad), Timeout, `.m4a`-Fehler.
     *   `jobs`: `fake-worker` (Datei 40) für Erfolg, Fehler, Stille → Zeitlimit, Abbruch; `TooSmall` ohne Worker-Start.
     *   `ipc`: fremde SID wird abgewiesen (soweit im CI-Konto möglich), Pfadprüfung, `VersionMismatch`, `UnknownCommand`.
+*   **Umgesetzt 2026-11 (M1):** `tests/ipc.rs` startet den Server über `IpcServer::start_named` mit eigenem Pipe-Namen und einer Attrappe der Hauptschleife: Handshake, `VersionMismatch`, „erste Nachricht kein `Hello`“, `UnknownCommand` bei offener Verbindung, Ereignisse, `Disconnected` beim Trennen. Die Befehle selbst (`commands.rs`, ein Untermodul von `service.rs`) brauchen die echte Pipeline; geprüft sind dort per Unit-Test JSON-Merge-Patch, die Ordnerregel (Datei 53) und die Anforderungen je Verbindung. Die fremde SID wird nicht getestet, weil das CI-Konto keinen zweiten Benutzer hat. Ende-zu-Ende laufen die Befehle erst mit der Oberfläche (M2).
 
 #### `crates/gameclip-worker` (Windows)
 

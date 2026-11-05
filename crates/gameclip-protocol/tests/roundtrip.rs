@@ -167,3 +167,56 @@ fn worker_messages_are_json_lines() {
     let line = serde_json::to_string(&WorkerMessage::Progress { percent: 42.0 }).unwrap();
     assert_eq!(line, r#"{"progress":{"percent":42.0}}"#);
 }
+
+/// Jedes ```json-Beispiel aus docs/protocol.md muss sich einlesen lassen. Nach `json` darf der
+/// Name eines Antworttyps stehen; dann wird auch `body` als dieser Typ gelesen.
+#[test]
+fn every_example_in_protocol_md_parses() {
+    use gameclip_protocol::messages::*;
+    let doc = include_str!("../../../docs/protocol.md");
+    let mut count = 0;
+    let mut lines = doc.lines();
+    while let Some(line) = lines.next() {
+        let Some(info) = line.strip_prefix("```json") else {
+            continue;
+        };
+        let block: Vec<&str> = lines
+            .by_ref()
+            .take_while(|l| !l.starts_with("```"))
+            .collect();
+        let text = block.join("\n");
+        let value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("kein JSON ({e}): {text}"));
+        if value.get("event").is_some() {
+            serde_json::from_value::<ServiceEvent>(value.clone())
+                .unwrap_or_else(|e| panic!("Ereignis ({e}): {text}"));
+        } else if value.get("ok").is_some() {
+            let r: Response = serde_json::from_value(value.clone())
+                .unwrap_or_else(|e| panic!("Antwort ({e}): {text}"));
+            let body = r.body.clone().unwrap_or(serde_json::Value::Null);
+            let check = |res: Result<(), serde_json::Error>| {
+                res.unwrap_or_else(|e| panic!("Body ({e}): {text}"))
+            };
+            match info.trim() {
+                "" => {}
+                "HelloReply" => check(serde_json::from_value::<HelloReply>(body).map(drop)),
+                "GetStatusReply" => check(serde_json::from_value::<GetStatusReply>(body).map(drop)),
+                "ListClipsReply" => check(serde_json::from_value::<ListClipsReply>(body).map(drop)),
+                "ListJobsReply" => check(serde_json::from_value::<ListJobsReply>(body).map(drop)),
+                "StartExportJobReply" => {
+                    check(serde_json::from_value::<StartExportJobReply>(body).map(drop))
+                }
+                "TestRegisterReply" => {
+                    check(serde_json::from_value::<TestRegisterReply>(body).map(drop))
+                }
+                other => panic!("unbekannter Antworttyp {other}"),
+            }
+        } else {
+            let req: Request = serde_json::from_value(value.clone())
+                .unwrap_or_else(|e| panic!("Anfrage ({e}): {text}"));
+            assert_eq!(serde_json::to_value(&req).unwrap()["type"], value["type"]);
+        }
+        count += 1;
+    }
+    assert!(count >= 20, "nur {count} Beispiele gefunden");
+}

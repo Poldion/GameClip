@@ -7,7 +7,9 @@
 pub mod capture;
 pub mod cli;
 pub mod clipboard;
+pub mod diagnostics;
 pub mod foreground;
+pub mod frames;
 pub mod index;
 pub mod ipc_server;
 pub mod jobs;
@@ -20,3 +22,4 @@ pub mod service;
 pub mod sound;
 pub mod toast;
 pub mod tray;
+pub mod watcher;

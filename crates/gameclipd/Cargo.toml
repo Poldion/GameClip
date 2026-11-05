@@ -14,6 +14,7 @@ gameclip-media.workspace = true
 gameclip-protocol.workspace = true
 rsmpeg.workspace = true
 rusqlite.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true
@@ -34,7 +35,9 @@ windows = { workspace = true, features = [
     "Win32_System_Com",
     "Win32_System_Console",
     "Win32_System_DataExchange",
+    "Win32_Graphics_Dxgi",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
     "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",

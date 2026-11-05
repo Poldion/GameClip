@@ -32,6 +32,18 @@ pub fn list_devices() -> Result<Vec<MicDevice>, String> {
     Ok(out)
 }
 
+/// ID des Windows-Standardmikrofons.
+pub fn default_device_id() -> Result<String, String> {
+    let _ = wasapi::initialize_mta();
+    let err = |e: wasapi::WasapiError| e.to_string();
+    DeviceEnumerator::new()
+        .map_err(err)?
+        .get_default_device(&Direction::Capture)
+        .map_err(err)?
+        .get_id()
+        .map_err(err)
+}
+
 /// Client für `device_id` oder das Standardgerät.
 pub fn open(device_id: Option<&str>) -> Result<AudioClient, String> {
     let err = |e: wasapi::WasapiError| e.to_string();

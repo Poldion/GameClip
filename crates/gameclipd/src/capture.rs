@@ -32,6 +32,23 @@ pub enum RecorderEvent {
         system: f32,
         mic: Option<f32>,
     },
+    /// Die Quelle hat ihre Größe geändert.
+    FormatChanged {
+        width: u32,
+        height: u32,
+    },
+}
+
+/// Monitor aus `capture.monitor` (GDI-Gerätename); unbekannt oder `None` = Hauptmonitor.
+fn monitor_target(id: Option<&str>) -> MonitorTarget {
+    id.and_then(|id| {
+        gameclip_gpu::list_monitors()
+            .ok()?
+            .into_iter()
+            .find(|m| m.id == id)
+            .map(|m| MonitorTarget::Handle(m.monitor))
+    })
+    .unwrap_or(MonitorTarget::Primary)
 }
 
 pub struct RecorderConfig {
@@ -48,8 +65,7 @@ impl RecorderConfig {
         let fc = forecast(settings, physical_ram);
         RecorderConfig {
             video: VideoConfig {
-                // Monitorwahl über `capture.monitor` folgt; bis dahin der Hauptmonitor.
-                monitor: MonitorTarget::Primary,
+                monitor: monitor_target(c.monitor.as_deref()),
                 width,
                 height,
                 fps: c.fps,
@@ -204,7 +220,9 @@ fn pump(
                 Ok(VideoEvent::HdrChanged(h)) => {
                     let _ = events.send(RecorderEvent::HdrChanged(h));
                 }
-                Ok(VideoEvent::FormatChanged { .. }) => {}
+                Ok(VideoEvent::FormatChanged { width, height }) => {
+                    let _ = events.send(RecorderEvent::FormatChanged { width, height });
+                }
                 Err(_) => video_open = false,
             },
             recv(arx) -> ev => match ev {

@@ -18,7 +18,7 @@ use gameclip_core::retention::FolderKind;
 use gameclip_core::settings::{Settings, parse};
 use gameclip_core::state::{Effect, Machine, SaveError, ServiceState, StateEvent, transition};
 use gameclip_protocol::error::ErrorCode;
-use gameclip_protocol::messages::{ExportProfile, ServiceEvent};
+use gameclip_protocol::messages::{ExportProfile, Response, ServiceEvent};
 use rsmpeg::avcodec::AVCodecParameters;
 use time::OffsetDateTime;
 use tracing::{error, info, warn};
@@ -28,6 +28,9 @@ use windows::Win32::System::Threading::CreateMutexW;
 use windows_core::HSTRING;
 
 use crate::capture::{Recorder, RecorderConfig, RecorderEvent};
+
+#[path = "commands.rs"]
+mod commands;
 use crate::foreground::foreground_program;
 use crate::index::Index;
 use crate::ipc_server::{Broadcaster, IpcRequest, IpcServer};
@@ -54,7 +57,7 @@ pub fn run() -> i32 {
         crate::toast::aumid()
     );
 
-    let settings = load_settings(&base.settings);
+    let (settings, settings_read_only) = load_settings(&base.settings);
     let paths = Paths::resolve(&settings);
     if let Err(e) = paths.create_all() {
         error!("Ordner lassen sich nicht anlegen: {e}");
@@ -73,7 +76,7 @@ pub fn run() -> i32 {
         );
     }
 
-    match Service::new(settings, paths, index) {
+    match Service::new(settings, settings_read_only, paths, index) {
         Ok(mut s) => {
             s.run();
             0
@@ -106,20 +109,24 @@ fn single_instance() -> Option<SingleInstance> {
     Some(SingleInstance(handle))
 }
 
-fn load_settings(path: &std::path::Path) -> Settings {
+/// Einstellungen und ob die Datei nur gelesen werden darf (neuere Schema-Version).
+fn load_settings(path: &std::path::Path) -> (Settings, bool) {
     match std::fs::read_to_string(path) {
         Ok(text) => match parse(&text) {
-            Ok(loaded) => loaded.settings().clone(),
+            Ok(loaded) => {
+                let read_only = matches!(loaded, gameclip_core::settings::Loaded::ReadOnly(_));
+                (loaded.settings().clone(), read_only)
+            }
             Err(e) => {
                 warn!("settings.toml unlesbar, nutze Standardwerte: {e}");
-                Settings::default()
+                (Settings::default(), false)
             }
         },
-        Err(_) => Settings::default(),
+        Err(_) => (Settings::default(), false),
     }
 }
 
-fn physical_ram() -> u64 {
+pub(crate) fn physical_ram() -> u64 {
     let mut s = MEMORYSTATUSEX {
         dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
         ..Default::default()
@@ -184,11 +191,24 @@ struct Service {
     toast_failed: bool,
     /// Export aus der Tray-Aktion: nach Abschluss in die Zwischenablage (G1a, Größe 4).
     copy_after: Option<(u32, std::time::Instant)>,
+    settings_read_only: bool,
+    conns: commands::Conns,
+    frames: crate::frames::FrameCache,
+    watcher: Option<crate::watcher::Watcher>,
+    watch_tx: Sender<FolderKind>,
+    watch_rx: Receiver<FolderKind>,
+    /// Entprellter Abgleich: Ordner und Zeitpunkt.
+    reconcile_due: Option<(std::collections::HashSet<FolderKind>, std::time::Instant)>,
     exit: bool,
 }
 
 impl Service {
-    fn new(settings: Settings, paths: Paths, index: Arc<Index>) -> std::io::Result<Self> {
+    fn new(
+        settings: Settings,
+        settings_read_only: bool,
+        paths: Paths,
+        index: Arc<Index>,
+    ) -> std::io::Result<Self> {
         let (msg_tx, msg_rx) = unbounded();
         let machine = Machine::default();
         let msg = MsgThread::start(msg_tx, view(&machine, settings.export.target_bytes))?;
@@ -206,6 +226,7 @@ impl Service {
             warn!("Pipe-Server startet nicht: {e}");
         }
         let (job_tx, job_rx) = unbounded();
+        let (watch_tx, watch_rx) = unbounded();
         let worker_path = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("gameclip-worker.exe")))
@@ -249,6 +270,13 @@ impl Service {
             sound: crate::sound::SoundPlayer::new(),
             toast_failed: false,
             copy_after: None,
+            settings_read_only,
+            conns: Default::default(),
+            frames: Default::default(),
+            watcher: None,
+            watch_tx,
+            watch_rx,
+            reconcile_due: None,
             exit: false,
         })
     }
@@ -289,12 +317,30 @@ impl Service {
 
         while !self.exit {
             let recovery = self.recovery.clone().unwrap_or_else(never);
+            let debounce = match &self.reconcile_due {
+                Some((_, at)) => crossbeam_channel::at(*at),
+                None => never(),
+            };
             select! {
                 recv(self.msg_rx) -> ev => if let Ok(ev) = ev { self.on_msg(ev) },
                 recv(self.rec_rx) -> ev => if let Ok(ev) = ev { self.on_recorder(ev) },
                 recv(self.save_rx) -> r => if let Ok(r) = r { self.on_saved(r) },
                 recv(self.ipc_rx) -> r => if let Ok(r) = r { self.on_ipc(r) },
                 recv(self.job_rx) -> ev => if let Ok(ev) = ev { self.on_job(ev) },
+                recv(self.watch_rx) -> f => if let Ok(folder) = f {
+                    // 1 s entprellen (Design, Datei 46).
+                    let at = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                    let due = self.reconcile_due.get_or_insert_with(|| (Default::default(), at));
+                    due.0.insert(folder);
+                    due.1 = at;
+                },
+                recv(debounce) -> _ => {
+                    if let Some((folders, _)) = self.reconcile_due.take() {
+                        for f in folders {
+                            self.reconcile_folder(f);
+                        }
+                    }
+                },
                 recv(recovery) -> _ => {
                     self.recovery = None;
                     let ok = self.restart_recorder();
@@ -387,7 +433,22 @@ impl Service {
             RecorderEvent::AudioSourceFailed { track, error } => {
                 warn!("Tonquelle {track:?} ausgefallen: {error}");
             }
-            RecorderEvent::Levels { .. } => {}
+            RecorderEvent::Levels { mic, .. } => {
+                if let Some(dbfs) = mic {
+                    self.events
+                        .send_to(&self.conns.mic_level, ServiceEvent::MicLevel { dbfs });
+                }
+            }
+            RecorderEvent::FormatChanged { width, height } => {
+                self.events.send(ServiceEvent::FormatChanged {
+                    width,
+                    height,
+                    hdr: self
+                        .machine
+                        .restrictions
+                        .contains(gameclip_core::state::Restrictions::HDR_ACTIVE),
+                });
+            }
         }
     }
 
@@ -423,6 +484,10 @@ impl Service {
                 };
                 self.toast(&text, &detail, Some(s.row_id));
                 self.enforce_limit(Some(s.row_id));
+                self.events.send(ServiceEvent::NewClip {
+                    clip_id: s.row_id,
+                    folder: FolderKind::Clips,
+                });
                 self.events.send(ServiceEvent::SaveCompleted {
                     clip_id: s.row_id,
                     path: s.path.to_string_lossy().into_owned(),
@@ -445,29 +510,25 @@ impl Service {
 
     fn on_ipc(&mut self, r: IpcRequest) {
         match r {
-            IpcRequest::SaveClip => self.press(gameclip_capture_win::pacer::qpc_us()),
-            IpcRequest::StartExport {
-                clip_id,
-                in_us,
-                out_us,
-                profile,
+            IpcRequest::Call {
+                conn,
+                id,
+                cmd,
                 reply,
             } => {
-                let r = match self.index.get(clip_id) {
-                    Ok(Some(c)) => Ok(self.jobs.start(c, in_us, out_us, profile)),
-                    _ => Err((ErrorCode::NotFound, format!("Clip {clip_id} unbekannt"))),
+                let response = match self.handle(conn, cmd) {
+                    Ok(body) => Response::ok(id, &body),
+                    Err(e) => {
+                        let mut r = Response::err(id, e.code, e.message);
+                        if let Some(body) = r.error.as_mut() {
+                            body.details = e.details;
+                        }
+                        r
+                    }
                 };
-                let _ = reply.send(r);
+                let _ = reply.send(response);
             }
-            IpcRequest::CancelJob(job_id) => self.jobs.cancel(job_id),
-            IpcRequest::GetStatus(reply) => {
-                let _ = reply.send(serde_json::json!({
-                    "state": format!("{:?}", self.machine.state),
-                    "mic_paused": self.machine.mic_paused,
-                    "saves_in_flight": self.machine.saves_in_flight,
-                    "encoder": self.recorder.as_ref().map(|r| r.encoder().0.to_string()),
-                }));
-            }
+            IpcRequest::Disconnected(conn) => self.disconnected(conn),
         }
     }
 
@@ -490,6 +551,16 @@ impl Service {
 
     fn on_job(&mut self, ev: JobEvent) {
         self.events.send(ev.to_service_event());
+        match &ev {
+            JobEvent::Progress {
+                job_id, percent, ..
+            } => self.jobs.progress(*job_id, *percent),
+            JobEvent::Completed { clip_id, .. } => self.events.send(ServiceEvent::NewClip {
+                clip_id: *clip_id,
+                folder: FolderKind::Exports,
+            }),
+            JobEvent::Failed { .. } => {}
+        }
         match ev {
             JobEvent::Completed {
                 job_id, clip_id, ..
@@ -540,6 +611,33 @@ impl Service {
             &crate::retention_exec::WinProbe,
         ) {
             Ok(done) => {
+                for (folders, reason) in done.warnings {
+                    for folder in folders {
+                        let limit_bytes = match folder {
+                            FolderKind::Clips => self.settings.storage.clip_limit_bytes,
+                            FolderKind::Exports => self.settings.storage.export_limit_bytes,
+                        };
+                        let used_bytes = self
+                            .index
+                            .list(folder)
+                            .map(|rows| {
+                                rows.iter()
+                                    .filter(|r| {
+                                        r.status == gameclip_core::retention::ClipStatus::Ok
+                                            && !r.placeholder
+                                    })
+                                    .map(|r| r.size_bytes)
+                                    .sum()
+                            })
+                            .unwrap_or(0);
+                        self.events.send(ServiceEvent::StorageWarning {
+                            folder,
+                            used_bytes,
+                            limit_bytes,
+                            reason,
+                        });
+                    }
+                }
                 for d in done.deleted {
                     self.events.send(ServiceEvent::ClipDeleted {
                         clip_id: d.row_id,
@@ -661,9 +759,11 @@ impl Service {
                 };
                 self.feed(ev);
             }
-            Effect::UpdateTray => self
-                .msg
-                .update_tray(view(&self.machine, self.settings.export.target_bytes)),
+            Effect::UpdateTray => {
+                self.msg
+                    .update_tray(view(&self.machine, self.settings.export.target_bytes));
+                self.events.send(ServiceEvent::StateChanged(self.status()));
+            }
             Effect::Exit => self.exit = true,
         }
     }

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Named-Pipe-Server (Design, Datei 53). M0-Umfang: Handshake, `GetStatus`, `SaveClip`,
-//! Ereignisse `SaveCompleted`/`SaveFailed`; alle anderen Befehle antworten `UnknownCommand`.
+//! Named-Pipe-Server (Design, Datei 53).
+//!
+//! Jede Anfrage geht als `IpcRequest::Call` mit einem Antwortkanal an die Hauptschleife; dort
+//! entsteht die `Response`. Beim Trennen meldet der Server `Disconnected(conn)`, damit der Dienst
+//! die Anforderungen dieser Verbindung zurücknimmt (`SuspendHotkey`, `WatchFolders`,
+//! `SubscribeMicLevel`). Ereignisse gehen über den `Broadcaster` an alle oder an ausgewählte
+//! Verbindungen.
 //!
 //! Sicherheit: SDDL `D:P(A;;GA;;;<SID>)` (nur der angemeldete Benutzer),
 //! `PIPE_REJECT_REMOTE_CLIENTS`, `FILE_FLAG_FIRST_PIPE_INSTANCE` für die erste Instanz, höchstens
@@ -10,19 +15,19 @@
 //! würde also das Senden von Ereignissen aufhalten. Der Verbindungs-Thread prüft deshalb mit
 //! `PeekNamedPipe`, ob eine Anfrage vorliegt, und sendet dazwischen Ereignisse (Takt 10 ms).
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
 use std::os::windows::io::FromRawHandle;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use gameclip_core::ids::pipe_name;
 use gameclip_protocol::error::ErrorCode;
 use gameclip_protocol::framing::{read_json, write_json};
-use gameclip_protocol::messages::{
-    Command, ExportProfile, HelloReply, Request, Response, ServiceEvent, StartExportJobReply,
-};
+use gameclip_protocol::messages::{Command, HelloReply, Request, Response, ServiceEvent};
 use gameclip_protocol::version::PROTOCOL_VERSION;
 use tracing::{info, warn};
 use windows::Win32::Foundation::{CloseHandle, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, LocalFree};
@@ -44,40 +49,58 @@ use windows_core::{HSTRING, PWSTR};
 const MAX_INSTANCES: u32 = 4;
 const BUFFER: u32 = 64 * 1024;
 const POLL: Duration = Duration::from_millis(10);
+/// Längste Wartezeit auf die Hauptschleife (z. B. `AdoptClip` schreibt eine Datei um).
+const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Was der Server von der Hauptschleife will.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // wenige Anfragen je Sekunde; Box lohnt nicht
 pub enum IpcRequest {
-    SaveClip,
-    StartExport {
-        clip_id: u32,
-        in_us: u64,
-        out_us: u64,
-        profile: ExportProfile,
-        reply: Sender<Result<u32, (ErrorCode, String)>>,
+    Call {
+        conn: u32,
+        id: u32,
+        cmd: Command,
+        reply: Sender<Response>,
     },
-    CancelJob(u32),
-    /// Antwort auf `GetStatus` (JSON des `ServiceStatus`).
-    GetStatus(Sender<serde_json::Value>),
+    Disconnected(u32),
 }
 
-/// Verteilt Ereignisse an alle offenen Verbindungen.
+type Subscribers = Vec<(u32, Sender<ServiceEvent>)>;
+
+/// Verteilt Ereignisse an offene Verbindungen.
 #[derive(Clone, Default)]
-pub struct Broadcaster(Arc<Mutex<Vec<Sender<ServiceEvent>>>>);
+pub struct Broadcaster(Arc<Mutex<Subscribers>>);
 
 impl Broadcaster {
+    /// An alle Verbindungen.
     pub fn send(&self, ev: ServiceEvent) {
         if let Ok(mut list) = self.0.lock() {
-            list.retain(|tx| tx.send(ev.clone()).is_ok());
+            list.retain(|(_, tx)| tx.send(ev.clone()).is_ok());
         }
     }
 
-    fn subscribe(&self) -> Receiver<ServiceEvent> {
+    /// Nur an die genannten Verbindungen (z. B. Abonnenten des Mikrofonpegels).
+    pub fn send_to(&self, conns: &HashSet<u32>, ev: ServiceEvent) {
+        if conns.is_empty() {
+            return;
+        }
+        if let Ok(mut list) = self.0.lock() {
+            list.retain(|(c, tx)| !conns.contains(c) || tx.send(ev.clone()).is_ok());
+        }
+    }
+
+    fn subscribe(&self, conn: u32) -> Receiver<ServiceEvent> {
         let (tx, rx) = unbounded();
         if let Ok(mut list) = self.0.lock() {
-            list.push(tx);
+            list.push((conn, tx));
         }
         rx
+    }
+
+    fn unsubscribe(&self, conn: u32) {
+        if let Ok(mut list) = self.0.lock() {
+            list.retain(|(c, _)| *c != conn);
+        }
     }
 }
 
@@ -110,14 +133,29 @@ pub fn user_sid() -> windows::core::Result<String> {
 pub struct IpcServer;
 
 impl IpcServer {
-    /// Startet den Annahme-Thread. Anfragen gehen an `requests`, Ereignisse kommen über
-    /// `events` (Broadcaster).
+    /// Startet den Server unter dem Pipe-Namen des Benutzers.
     pub fn start(requests: Sender<IpcRequest>, events: Broadcaster) -> windows::core::Result<()> {
         let sid = user_sid()?;
-        let name = pipe_name(&sid);
+        Self::start_named(pipe_name(&sid), requests, events)
+    }
+
+    /// Wie `start`, mit eigenem Pipe-Namen (Tests).
+    pub fn start_named(
+        name: String,
+        requests: Sender<IpcRequest>,
+        events: Broadcaster,
+    ) -> windows::core::Result<()> {
+        let sid = user_sid()?;
+        // Erste Instanz sofort anlegen, damit ein laufender zweiter Server sofort auffällt.
+        let first = create_instance(&name, &sid, true)?;
+        info!("Pipe bereit: {name}");
+        let first_raw = first.0 as usize;
         std::thread::Builder::new()
             .name("gameclip-ipc".into())
-            .spawn(move || accept_loop(&name, &sid, &requests, &events))
+            .spawn(move || {
+                let first = HANDLE(first_raw as *mut std::ffi::c_void);
+                accept_loop(&name, &sid, first, &requests, &events)
+            })
             .map_err(|_| windows::core::Error::from_thread())?;
         Ok(())
     }
@@ -159,22 +197,28 @@ fn create_instance(name: &str, sid: &str, first: bool) -> windows::core::Result<
     }
 }
 
-fn accept_loop(name: &str, sid: &str, requests: &Sender<IpcRequest>, events: &Broadcaster) {
-    let mut first = true;
+fn accept_loop(
+    name: &str,
+    sid: &str,
+    first: HANDLE,
+    requests: &Sender<IpcRequest>,
+    events: &Broadcaster,
+) {
+    static NEXT_CONN: AtomicU32 = AtomicU32::new(1);
+    let mut next = Some(first);
     loop {
-        let handle = match create_instance(name, sid, first) {
-            Ok(h) => h,
-            Err(e) => {
-                warn!("Pipe lässt sich nicht anlegen: {e}");
-                // Alle Instanzen belegt: kurz warten, bis eine Verbindung endet.
-                std::thread::sleep(Duration::from_millis(200));
-                continue;
-            }
+        let handle = match next.take() {
+            Some(h) => h,
+            None => match create_instance(name, sid, false) {
+                Ok(h) => h,
+                Err(e) => {
+                    warn!("Pipe lässt sich nicht anlegen: {e}");
+                    // Alle Instanzen belegt: kurz warten, bis eine Verbindung endet.
+                    std::thread::sleep(Duration::from_millis(200));
+                    continue;
+                }
+            },
         };
-        if first {
-            info!("Pipe bereit: {name}");
-        }
-        first = false;
         let connected = unsafe { ConnectNamedPipe(handle, None) };
         if let Err(e) = connected
             && e.code() != ERROR_PIPE_CONNECTED.to_hresult()
@@ -184,7 +228,8 @@ fn accept_loop(name: &str, sid: &str, requests: &Sender<IpcRequest>, events: &Br
             }
             continue;
         }
-        let (requests, events) = (requests.clone(), events.subscribe());
+        let conn = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
+        let (requests, ev_rx, events) = (requests.clone(), events.subscribe(conn), events.clone());
         // HANDLE ist nicht Send; der Rohwert geht als Zahl an den Verbindungs-Thread.
         let raw = handle.0 as usize;
         let _ = std::thread::Builder::new()
@@ -193,9 +238,11 @@ fn accept_loop(name: &str, sid: &str, requests: &Sender<IpcRequest>, events: &Br
                 let handle = HANDLE(raw as *mut std::ffi::c_void);
                 // SAFETY: Das Handle gehört ab hier allein der Datei.
                 let file = unsafe { File::from_raw_handle(handle.0) };
-                if let Err(e) = connection(file, handle, &requests, &events) {
-                    tracing::debug!("Verbindung beendet: {e}");
+                if let Err(e) = connection(conn, file, handle, &requests, &ev_rx) {
+                    tracing::debug!("Verbindung {conn} beendet: {e}");
                 }
+                events.unsubscribe(conn);
+                let _ = requests.send(IpcRequest::Disconnected(conn));
             });
     }
 }
@@ -208,6 +255,7 @@ fn available(handle: HANDLE) -> Result<u32, String> {
 }
 
 fn connection(
+    conn: u32,
     mut file: File,
     handle: HANDLE,
     requests: &Sender<IpcRequest>,
@@ -249,48 +297,32 @@ fn connection(
             std::thread::sleep(POLL);
             continue;
         }
-        let req: Request = read_json(&mut file).map_err(err)?;
-        let response = match req.cmd {
-            Command::SaveClip => {
-                let _ = requests.send(IpcRequest::SaveClip);
-                Response::ok(req.id, &serde_json::Value::Null)
-            }
-            Command::GetStatus => {
-                let (tx, rx) = crossbeam_channel::bounded(1);
-                let _ = requests.send(IpcRequest::GetStatus(tx));
-                match rx.recv_timeout(Duration::from_secs(2)) {
-                    Ok(status) => Response::ok(req.id, &status),
-                    Err(_) => Response::err(req.id, ErrorCode::Timeout, "Dienst antwortet nicht"),
+        // Unlesbare Befehle (unbekannter Typ) beantworten statt die Verbindung zu beenden.
+        let raw: serde_json::Value = read_json(&mut file).map_err(err)?;
+        let id = raw.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let response = match serde_json::from_value::<Request>(raw) {
+            Ok(Request {
+                cmd: Command::Hello { .. },
+                ..
+            }) => Response::err(id, ErrorCode::InvalidArgument, "Hello nur einmal"),
+            Ok(req) => {
+                let (tx, rx) = bounded(1);
+                if requests
+                    .send(IpcRequest::Call {
+                        conn,
+                        id: req.id,
+                        cmd: req.cmd,
+                        reply: tx,
+                    })
+                    .is_err()
+                {
+                    return Ok(());
                 }
+                rx.recv_timeout(CALL_TIMEOUT).unwrap_or_else(|_| {
+                    Response::err(id, ErrorCode::Timeout, "Dienst antwortet nicht")
+                })
             }
-            Command::StartExportJob {
-                clip_id,
-                in_us,
-                out_us,
-                profile,
-            } => {
-                let (tx, rx) = crossbeam_channel::bounded(1);
-                let _ = requests.send(IpcRequest::StartExport {
-                    clip_id,
-                    in_us,
-                    out_us,
-                    profile,
-                    reply: tx,
-                });
-                match rx.recv_timeout(Duration::from_secs(2)) {
-                    Ok(Ok(job_id)) => Response::ok(req.id, &StartExportJobReply { job_id }),
-                    Ok(Err((code, msg))) => Response::err(req.id, code, msg),
-                    Err(_) => Response::err(req.id, ErrorCode::Timeout, "Dienst antwortet nicht"),
-                }
-            }
-            Command::CancelJob { job_id } => {
-                let _ = requests.send(IpcRequest::CancelJob(job_id));
-                Response::ok(req.id, &serde_json::Value::Null)
-            }
-            Command::Hello { .. } => {
-                Response::err(req.id, ErrorCode::InvalidArgument, "Hello nur einmal")
-            }
-            _ => Response::err(req.id, ErrorCode::UnknownCommand, "in M0 nicht umgesetzt"),
+            Err(e) => Response::err(id, ErrorCode::UnknownCommand, e.to_string()),
         };
         write_json(&mut file, &response).map_err(err)?;
         file.flush().map_err(|e| e.to_string())?;

@@ -22,7 +22,7 @@ use gameclip_core::export_plan::plan;
 use gameclip_core::naming::{ExportSuffix, dedupe, export_file_name};
 use gameclip_core::retention::FolderKind;
 use gameclip_protocol::error::ErrorCode;
-use gameclip_protocol::messages::{ExportProfile, ServiceEvent};
+use gameclip_protocol::messages::{ExportProfile, JobInfo, JobState, ServiceEvent};
 use gameclip_protocol::worker::{WorkerError, WorkerJob, WorkerMessage};
 use time::OffsetDateTime;
 use tracing::{info, warn};
@@ -97,6 +97,7 @@ impl JobEvent {
 
 struct Request {
     job_id: u32,
+    paths: Paths,
     clip: ClipRow,
     in_us: u64,
     out_us: u64,
@@ -117,21 +118,29 @@ pub struct Jobs {
     tx: Sender<Request>,
     next_id: Mutex<u32>,
     cancelled: Arc<Mutex<HashSet<u32>>>,
+    /// Wartende und laufender Auftrag für `ListJobs`.
+    list: Arc<Mutex<Vec<JobInfo>>>,
+    /// Aktuelle Ordner; jeder Auftrag nimmt sie beim Einreihen mit.
+    paths: Mutex<Paths>,
 }
 
 impl Jobs {
     pub fn new(cfg: JobsConfig, events: Sender<JobEvent>) -> Self {
         let (tx, rx) = unbounded();
         let cancelled = Arc::new(Mutex::new(HashSet::new()));
-        let c = cancelled.clone();
+        let list = Arc::new(Mutex::new(Vec::new()));
+        let (c, l) = (cancelled.clone(), list.clone());
+        let paths = Mutex::new(cfg.paths.clone());
         std::thread::Builder::new()
             .name("gameclip-jobs".into())
-            .spawn(move || runner(cfg, rx, events, c))
+            .spawn(move || runner(cfg, rx, events, c, l))
             .expect("Auftrags-Thread startet");
         Jobs {
             tx,
             next_id: Mutex::new(1),
             cancelled,
+            list,
+            paths,
         }
     }
 
@@ -143,14 +152,46 @@ impl Jobs {
             *n += 1;
             id
         };
+        if let Ok(mut l) = self.list.lock() {
+            l.push(JobInfo {
+                job_id,
+                clip_id: clip.row_id,
+                profile,
+                state: JobState::Queued,
+                percent: 0.0,
+            });
+        }
+        let paths = self.paths.lock().map(|p| p.clone()).expect("Mutex");
         let _ = self.tx.send(Request {
             job_id,
+            paths,
             clip,
             in_us,
             out_us,
             profile,
         });
         job_id
+    }
+
+    /// Neue Ordner (nach `SetSettings`) für künftige Aufträge.
+    pub fn set_paths(&self, paths: Paths) {
+        if let Ok(mut p) = self.paths.lock() {
+            *p = paths;
+        }
+    }
+
+    /// Fortschritt für `ListJobs` (aus den Ereignissen).
+    pub fn progress(&self, job_id: u32, percent: f32) {
+        if let Ok(mut l) = self.list.lock()
+            && let Some(j) = l.iter_mut().find(|j| j.job_id == job_id)
+        {
+            j.percent = percent;
+        }
+    }
+
+    /// Laufender und wartende Aufträge.
+    pub fn list(&self) -> Vec<JobInfo> {
+        self.list.lock().map(|l| l.clone()).unwrap_or_default()
     }
 
     /// Bricht einen wartenden oder laufenden Auftrag ab.
@@ -175,7 +216,15 @@ fn runner(
     rx: Receiver<Request>,
     events: Sender<JobEvent>,
     cancelled: Arc<Mutex<HashSet<u32>>>,
+    list: Arc<Mutex<Vec<JobInfo>>>,
 ) {
+    let set = |job_id: u32, f: &dyn Fn(&mut JobInfo)| {
+        if let Ok(mut l) = list.lock()
+            && let Some(j) = l.iter_mut().find(|j| j.job_id == job_id)
+        {
+            f(j);
+        }
+    };
     for req in rx {
         let job_id = req.job_id;
         let is_cancelled = || {
@@ -193,7 +242,12 @@ fn runner(
             continue;
         }
         let started = Instant::now();
-        let ev = match run_job(&cfg, &req, &events, &is_cancelled) {
+        set(job_id, &|j| j.state = JobState::Running);
+        let result = run_job(&cfg, &req, &events, &is_cancelled);
+        if let Ok(mut l) = list.lock() {
+            l.retain(|j| j.job_id != job_id);
+        }
+        let ev = match result {
             Ok((clip_id, path)) => {
                 info!(
                     "Export {job_id} fertig in {} ms: {}",
@@ -285,13 +339,13 @@ fn run_job(
         ExportProfile::SeparateTracks => ExportSuffix::Tracks,
         ExportProfile::TargetSize { bytes } => ExportSuffix::TargetSize { bytes },
     };
-    std::fs::create_dir_all(&cfg.paths.exports)
+    std::fs::create_dir_all(&req.paths.exports)
         .map_err(|e| (ErrorCode::FolderMissing, e.to_string()))?;
     let name = dedupe(&export_file_name(&stem, suffix), |n| {
-        let p = cfg.paths.exports.join(n);
+        let p = req.paths.exports.join(n);
         p.exists() || part_path(&p).exists()
     });
-    let final_path = cfg.paths.exports.join(name);
+    let final_path = req.paths.exports.join(name);
     let part = part_path(&final_path);
     let tag_id = uuid::Uuid::new_v4().to_string();
     let row_id = cfg
@@ -330,7 +384,7 @@ fn run_worker(
     events: &Sender<JobEvent>,
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<(u64, u64), (ErrorCode, String)> {
-    let tracks = cfg.paths.track_file(&req.clip.tag_id);
+    let tracks = req.paths.track_file(&req.clip.tag_id);
     let job = WorkerJob {
         source: req.clip.path.to_string_lossy().into_owned(),
         tracks_path: tracks

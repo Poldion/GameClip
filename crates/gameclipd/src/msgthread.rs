@@ -13,6 +13,7 @@ use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use gameclip_capture_win::pacer::qpc_us;
 use gameclip_core::keymap::to_vk;
 use gameclip_core::settings::Hotkey;
+use gameclip_protocol::messages::TestRegisterReply;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::RemoteDesktop::{
@@ -32,6 +33,8 @@ use windows_core::w;
 use crate::tray::{Tray, TrayCommand, TrayView};
 
 const HOTKEY_ID: i32 = 1;
+/// ID für `TestRegister`; nie dauerhaft registriert.
+const TEST_ID: i32 = 2;
 const WTS_SESSION_LOCK: usize = 0x7;
 const WTS_SESSION_UNLOCK: usize = 0x8;
 
@@ -48,6 +51,7 @@ pub enum MsgEvent {
 
 enum Command {
     Register(Hotkey, Sender<Result<(), String>>),
+    TestRegister(Hotkey, Sender<TestRegisterReply>),
     Unregister,
     UpdateTray(TrayView),
     Quit,
@@ -113,6 +117,16 @@ impl MsgThread {
         self.send(Command::Register(hotkey.clone(), tx));
         rx.recv()
             .unwrap_or_else(|_| Err("Nachrichten-Thread beendet".into()))
+    }
+
+    /// Prüft, ob die Taste frei ist (registriert kurz unter eigener ID und gibt sie wieder frei).
+    pub fn test_register(&self, hotkey: &Hotkey) -> TestRegisterReply {
+        let (tx, rx) = bounded(1);
+        self.send(Command::TestRegister(hotkey.clone(), tx));
+        rx.recv().unwrap_or(TestRegisterReply {
+            free: false,
+            error: None,
+        })
     }
 
     /// Hotkey vorübergehend freigeben (Hotkey-Auswahl in der Oberfläche).
@@ -191,6 +205,35 @@ fn run(events: Sender<MsgEvent>, commands: Receiver<Command>, id: Sender<u32>, v
                             },
                         );
                         registered = result.is_ok();
+                        let _ = reply.send(result);
+                    }
+                    Command::TestRegister(hk, reply) => {
+                        let result = match to_vk(&hk) {
+                            Err(_) => TestRegisterReply {
+                                free: false,
+                                error: None,
+                            },
+                            Ok((mods, vk)) => unsafe {
+                                match RegisterHotKey(
+                                    Some(hwnd),
+                                    TEST_ID,
+                                    HOT_KEY_MODIFIERS(mods),
+                                    vk,
+                                ) {
+                                    Ok(()) => {
+                                        let _ = UnregisterHotKey(Some(hwnd), TEST_ID);
+                                        TestRegisterReply {
+                                            free: true,
+                                            error: None,
+                                        }
+                                    }
+                                    Err(e) => TestRegisterReply {
+                                        free: false,
+                                        error: Some(e.code().0 as u32 & 0xFFFF),
+                                    },
+                                }
+                            },
+                        };
                         let _ = reply.send(result);
                     }
                     Command::Unregister => unsafe {

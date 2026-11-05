@@ -250,6 +250,21 @@ impl Ring {
         }
     }
 
+    /// Gepufferte Dauer im neuesten Abschnitt (ältester Keyframe bis neuestes Bild), für den Status.
+    pub fn buffered_us(&self) -> u64 {
+        let s = self.state.lock().expect("Ring-Mutex");
+        let section = s.section;
+        let oldest = s
+            .index
+            .iter()
+            .find(|p| p.stream == Stream::Video && p.keyframe && p.section == section)
+            .map(|p| p.pts_us);
+        match (oldest, s.newest_video_us) {
+            (Some(a), Some(b)) if b > a => (b - a) as u64,
+            _ => 0,
+        }
+    }
+
     pub fn stats(&self) -> RingStats {
         let mut s = self.state.lock().expect("Ring-Mutex");
         s.stats.packets = s.index.len();

@@ -11,7 +11,7 @@ pub mod device;
 pub mod hdr;
 
 pub use convert::{Converter, InFormat, TexRef};
-pub use device::{GpuDevice, MonitorTarget};
+pub use device::{GpuDevice, MonitorDesc, MonitorTarget, list_monitors};
 
 #[derive(Debug, thiserror::Error)]
 pub enum GpuError {

@@ -139,6 +139,55 @@ impl GpuDevice {
     }
 }
 
+/// Ein Monitor für die Auswahl in den Einstellungen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MonitorDesc {
+    /// GDI-Gerätename, z. B. `\\.\DISPLAY1`; dient als stabile ID in `capture.monitor`.
+    pub id: String,
+    pub monitor: HMONITOR,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
+    pub hdr: bool,
+}
+
+/// Alle Monitore an allen Adaptern.
+pub fn list_monitors() -> Result<Vec<MonitorDesc>> {
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITORINFO};
+    let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
+    let primary = unsafe { MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY) };
+    let mut out = Vec::new();
+    let mut a = 0;
+    while let Ok(adapter) = unsafe { factory.EnumAdapters1(a) } {
+        let mut o = 0;
+        while let Ok(output) = unsafe { adapter.EnumOutputs(o) } {
+            let desc = unsafe { output.GetDesc()? };
+            let end = desc
+                .DeviceName
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(desc.DeviceName.len());
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let _ = unsafe { GetMonitorInfoW(desc.Monitor, &mut info) };
+            let r = info.rcMonitor;
+            out.push(MonitorDesc {
+                id: String::from_utf16_lossy(&desc.DeviceName[..end]),
+                monitor: desc.Monitor,
+                width: (r.right - r.left).max(0) as u32,
+                height: (r.bottom - r.top).max(0) as u32,
+                primary: desc.Monitor == primary,
+                hdr: crate::hdr::is_hdr_active(&output).unwrap_or(false),
+            });
+            o += 1;
+        }
+        a += 1;
+    }
+    Ok(out)
+}
+
 fn luid_to_u64(l: LUID) -> u64 {
     (u64::from(l.HighPart as u32) << 32) | u64::from(l.LowPart)
 }

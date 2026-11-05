@@ -78,8 +78,9 @@ export function Editor(props: { clip: ClipEntry; onBack: () => void }) {
   useEffect(() => {
     if (!frames || exporting) return;
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.getAttribute("role") === "slider")) return;
+      // Eingabefelder und die Griffe der Leiste behandeln ihre Tasten selbst.
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.getAttribute("role") === "slider")) return;
       const n = frames.framesUs.length;
       switch (e.key) {
         case " ":

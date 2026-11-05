@@ -6,15 +6,23 @@ GameClip nimmt im Hintergrund den Bildschirm und den Ton auf und hält die letzt
 einem Ringpuffer im Arbeitsspeicher. Ein Druck auf **F8** speichert sie als MP4. Kodiert wird auf
 der Grafikkarte (NVENC, AMF, Quick Sync), die Spiele bleiben unberührt.
 
-> **Stand:** Meilenstein M0 (Prototyp). Es gibt den Dienst mit Tray-Symbol, noch keine Galerie
-> und keine Einstellungsoberfläche. Siehe [Design](docs/designs/gameclip.md).
+> **Stand:** Meilenstein M3 (Vorabversion). Dienst mit Tray-Symbol, Oberfläche mit erstem Start,
+> Galerie, Editor zum Kürzen und Exportieren (auch auf eine Zielgröße wie 10 MB für Discord) und
+> Einstellungen. Noch nicht signiert veröffentlicht. Siehe [Design](docs/designs/gameclip.md).
 
 ## Was GameClip tut – und was nicht
 
-* **Aufnahme:** Windows.Graphics.Capture des Hauptmonitors, Standard 60 s in 1080p60.
-* **Ton:** Systemton und Mikrofon auf getrennten Spuren. Im Clip liegt die Mischung, die
-  Einzelspuren in einer Begleitdatei. **Das Mikrofon wird standardmäßig mit aufgenommen**, solange
-  der Dienst läuft (pausierbar im Tray-Menü). Die Aufnahme pausiert, solange der PC gesperrt ist.
+* **Aufnahme:** Windows.Graphics.Capture eines Monitors (Standard: Hauptmonitor), 15 bis 300 s,
+  Standard 60 s in 1080p60.
+* **Ton:** Systemton, Mikrofon und auf Wunsch Discord auf getrennten Spuren. Im Clip liegt die
+  Mischung, die Einzelspuren in einer Begleitdatei; „Mit getrennten Spuren exportieren“ legt alle
+  in eine MP4. **Das Mikrofon wird standardmäßig mit aufgenommen**, solange der Dienst läuft
+  (pausierbar im Tray-Menü). Die Aufnahme pausiert, solange der PC gesperrt ist.
+* **Galerie und Editor:** Clips und Exporte mit Stern gegen das automatische Löschen, bildgenaues
+  Kürzen, Export als Mischung, mit getrennten Spuren oder auf eine Zielgröße; Kopieren in die
+  Zwischenablage und Ziehen nach Discord oder in den Explorer.
+* **Speicherlimit:** Ist der Clip-Ordner voll, löscht GameClip die ältesten eigenen Clips ohne
+  Stern endgültig. Fremde Dateien im Ordner fasst es nicht an.
 * **Kein Code im Spiel:** GameClip injiziert nichts, setzt keine Hooks und öffnet kein Handle auf
   Spielprozesse. Getestet mit Riot Vanguard (Valorant) am 2026-11-05: Speichern per F8 im Spiel
   funktioniert; der Dauertest ohne Befund (S1) steht noch aus.
@@ -34,12 +42,12 @@ Testzertifikat signiert (die Signatur braucht einmal eine UAC-Bestätigung):
 pwsh packaging/ffmpeg/fetch-ffmpeg.ps1
 pwsh packaging/build-msix.ps1 -TestCert
 Add-AppxPackage packaging/out/GameClip_0.1.0.0_x64.msix
-$p = (Get-AppxPackage io.github.poldion.GameClip).PackageFamilyName
-explorer.exe "shell:AppsFolder\$p!Service"
 ```
 
-Clips landen in `Videos\GameClip`. Das Tray-Menü bietet „Clip speichern“, „Letzten Clip
-kopieren“, „Letzten Clip unter 10 MB kopieren“, Pause und Beenden.
+Danach „GameClip“ im Startmenü öffnen. Die Oberfläche startet den Dienst und führt durch den
+ersten Start (Mikrofon, Hotkey, Ordner, Test-Clip). Clips landen in `Videos\GameClip`, Exporte in
+`Videos\GameClip Export`. Das Tray-Menü bietet „Clip speichern“, „Letzten Clip kopieren“,
+„Letzten Clip unter 10 MB kopieren“, Pause, „Galerie öffnen“, „Einstellungen“ und Beenden.
 
 ## Bauen
 
@@ -56,9 +64,18 @@ kopieren“, „Letzten Clip unter 10 MB kopieren“, Pause und Beenden.
 
   Einige Tests laufen auf der echten GPU und nehmen kurz den Bildschirm auf; die Dateien werden
   danach gelöscht.
+* Oberfläche (Node.js 24, in `apps/gameclip-ui`):
+
+  ```powershell
+  npm ci
+  npm test            # Tests gegen die Attrappe ipc.mock.ts
+  npm run dev:mock    # Oberfläche im Browser mit Beispieldaten, ohne Dienst (http://localhost:1420/?ready)
+  npm run build       # dist/, wird von cargo build -p gameclip-ui eingebettet
+  ```
 
 ## Lizenz
 
 GameClip steht unter der [GNU General Public License v3.0 oder später](LICENSE). Das Paket
 enthält FFmpeg (GPL-3.0, Quelle siehe [ffmpeg.lock](packaging/ffmpeg/ffmpeg.lock)); die
-Lizenzen aller Abhängigkeiten stehen in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Lizenzen aller Abhängigkeiten stehen in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+(Rust) und [THIRD_PARTY_LICENSES_JS.md](THIRD_PARTY_LICENSES_JS.md) (Oberfläche).

@@ -49,12 +49,13 @@ describe("ExportDialog", () => {
     );
   });
 
-  it("zeigt Fortschritt und am Ende Kopieren", async () => {
+  // Das Mock meldet 10 × 200 ms Fortschritt; unter Last (parallele Builds) großzügig warten.
+  it("zeigt Fortschritt und am Ende Kopieren", { timeout: 20_000 }, async () => {
     await renderWithStore(<ExportDialog clip={clip} inUs={0} outUs={5_000_000} onClose={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Exportieren" }));
     expect(await screen.findByRole("progressbar")).toBeTruthy();
-    expect(await screen.findByText(/NVENC/, {}, { timeout: 2000 })).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Kopieren" }, { timeout: 4000 })).toBeTruthy();
+    expect(await screen.findByText(/NVENC/, {}, { timeout: 8000 })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Kopieren" }, { timeout: 15_000 })).toBeTruthy();
   });
 
   it("ohne Einzelspuren ist „getrennte Spuren“ gesperrt", async () => {

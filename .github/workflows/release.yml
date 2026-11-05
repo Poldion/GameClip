@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/gameclip-ui/package-lock.json
       - name: FFmpeg laden und Bindings erzeugen
         shell: pwsh
         run: |

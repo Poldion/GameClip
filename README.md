@@ -90,6 +90,27 @@ Das Tray-Menü bietet „Clip speichern“, „Letzten Clip kopieren“,
   npm run build       # dist/, wird von cargo build -p gameclip-ui eingebettet
   ```
 
+## Code signing policy
+
+Releases werden in GitHub Actions aus diesem Repository gebaut und signiert
+([`release.yml`](.github/workflows/release.yml)); niemand signiert Dateien von Hand. Die Signatur
+über die [SignPath Foundation](https://signpath.org) ist beantragt. Bis dahin sind die Releases
+Vorabversionen mit einem eigenen Testzertifikat ([`GameClip-Release.cer`](packaging/GameClip-Release.cer)).
+
+* **Autoren** (ändern den Quellcode ohne weitere Prüfung): [Poldion](https://github.com/Poldion)
+* **Prüfer** (prüfen Beiträge von außen, etwa Pull Requests): [Poldion](https://github.com/Poldion)
+* **Freigabe** (gibt jede Signatur frei): [Poldion](https://github.com/Poldion)
+
+Mitgeliefert und nicht selbst signiert werden die FFmpeg-DLLs aus dem gepinnten
+GPL-Build ([ffmpeg.lock](packaging/ffmpeg/ffmpeg.lock)).
+
+**Datenschutz:** GameClip überträgt keine Daten an andere Rechner, außer wenn der Benutzer es
+ausdrücklich anfordert. Das ist nur „Nach Updates suchen“: Dieser Klick fragt
+`api.github.com` nach den Releases dieses Repositorys, „Herunterladen und installieren“ lädt das
+Paket von `github.com`. Dabei gelten die
+[Datenschutzbestimmungen von GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+Clips, Einstellungen und Logs bleiben auf dem Rechner.
+
 ## Lizenz
 
 GameClip steht unter der [GNU General Public License v3.0 oder später](LICENSE). Das Paket

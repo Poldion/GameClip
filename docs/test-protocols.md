@@ -152,6 +152,45 @@ komprimierbarem Bild schafft. Echte Spielaufnahmen (1080p, auf 480p30 verkleiner
 prüfen, bevor die Grenze angehoben wird; dann würden solche Fälle vorab als „zu klein“ gemeldet
 statt nach zwei Kodierläufen.
 
-## S7, G1b
+## Hardware-Testmatrix (M4)
 
-Ab M4 bzw. nach M3; Schritte und Kriterien siehe Design.
+Jede Zeile läuft mit dem neuesten Release. Geprüft wird jeweils: erster Start bis zum ersten
+Clip (CUJ 1), F8 im Spiel (CUJ 2), Größen-Export unter 10 MB und Kopieren nach Discord (CUJ 3),
+Autostart nach Neuanmeldung, „Diagnose kopieren“ zeigt den erwarteten Encoder.
+
+| Rechner | GPU / Encoder | Monitore | Ergebnis |
+| --- | --- | --- | --- |
+| Referenzrechner | RX 6750 XT / `h264_amf` | 1440p + 1080p hochkant | offen |
+| Rechner mit NVIDIA | `h264_nvenc` | | fehlt |
+| Rechner mit Intel-Grafik | `h264_qsv` | | fehlt |
+| Laptop mit zwei GPUs | iGPU + dGPU | intern + extern | fehlt |
+| Rechner ohne Hardware-Encoder (VM) | `libx264` | 1080p | offen (zusammen mit S7) |
+
+## S7 – Signiertes Paket auf frischem Windows (M4)
+
+**Kriterien:** Das signierte MSIX installiert auf einer frischen VM ohne SmartScreen- und
+Defender-Warnung; GameClip startet und speichert einen Clip.
+
+**Aufbau:** Windows 11 24H2 oder neuer in Hyper-V („Schnellerstellung“ → Windows 11-Entwicklungs-
+umgebung oder eigenes ISO), ohne weitere Software, Defender an, SmartScreen auf Standard. Kein
+GameClip-Zertifikat eingetragen.
+
+**Schritte:**
+
+1. In der VM das Release mit SignPath-Signatur im Browser (Edge) laden.
+2. Doppelklick auf `GameClip_<Version>_x64.msix`: Der App Installer muss den Herausgeber als
+   verifiziert anzeigen, ohne Hinweis auf ein unbekanntes Zertifikat.
+3. Installieren, GameClip starten, ersten Start durchlaufen, F8 drücken.
+4. Ereignisanzeige → Windows Defender → Betriebsbereit: keine Meldung zu GameClip.
+
+**Vorprüfung mit dem Testzertifikat:** Dieselben Schritte mit `GameClip-Setup.exe` zeigen den
+heutigen Stand: SmartScreen warnt einmal („Trotzdem ausführen“), danach UAC für das Zertifikat.
+Das ist erwartet und kein Bestehen von S7.
+
+| Datum | Ergebnis |
+| --- | --- |
+| | offen (wartet auf SignPath) |
+
+## G1b
+
+Nach M3; Schritte und Kriterien siehe Design.

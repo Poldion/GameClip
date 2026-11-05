@@ -34,7 +34,8 @@ try {
         npm run build
         if ($LASTEXITCODE -ne 0) { throw "npm run build fehlgeschlagen ($LASTEXITCODE)" }
     } finally { Pop-Location }
-    cargo build --release -p gameclipd -p gameclip-worker -p gameclip-ui
+    # custom-protocol: Frontend einbetten statt devUrl zu laden.
+    cargo build --release -p gameclipd -p gameclip-worker -p gameclip-ui --features gameclip-ui/custom-protocol
     if ($LASTEXITCODE -ne 0) { throw "cargo build fehlgeschlagen ($LASTEXITCODE)" }
 } finally { Pop-Location }
 

@@ -10,6 +10,11 @@ repository.workspace = true
 name = "gameclip"
 path = "src/main.rs"
 
+[features]
+# Bettet ../dist ein und lädt es über tauri://localhost. Ohne das Feature lädt die Exe devUrl
+# (Vite auf localhost:1420) – `tauri build` setzt es selbst, ein reines `cargo build` nicht.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

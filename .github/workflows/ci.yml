@@ -2,7 +2,7 @@
 # CI (Design, Datei 7). Die Runner haben keine GPU, keine Audiogeräte und keinen echten Desktop:
 # Tests mit Hardware (Encoder auf der GPU, WGC, WASAPI, D3D11VA, Worker) laufen nur lokal bzw.
 # später auf einem eigenen Runner. Hier wird alles gebaut und jeder Test ohne Hardware ausgeführt.
-# Ab M3 kommen die Schritte der Oberfläche (npm) dazu.
+# Die Oberfläche (npm) wird vor cargo gebaut und getestet.
 name: CI
 
 on:
@@ -28,6 +28,23 @@ jobs:
           $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
           pwsh packaging/ffmpeg/fetch-ffmpeg.ps1
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/gameclip-ui/package-lock.json
+
+      # Vor cargo: Tauri bettet apps/gameclip-ui/dist beim Kompilieren ein.
+      - name: Oberfläche (Typen, Tests, Build)
+        working-directory: apps/gameclip-ui
+        run: |
+          npm ci
+          npm run gen:types
+          npm run typecheck
+          npm test
+          npm run build
+          npm run licenses
+
       - name: Format
         run: cargo fmt --all --check
 
@@ -45,7 +62,8 @@ jobs:
           Run -p gameclip-core -p gameclip-protocol -p gameclip-testsupport
           Run -p gameclip-media --lib --test audio_codec --test encode_mux
           Run -p gameclip-capture-win --lib --test ring
-          Run -p gameclipd --all-features --lib --test index --test retention_exec --test jobs --test save
+          Run -p gameclipd --all-features --lib --test index --test retention_exec --test jobs --test save --test ipc
+          Run -p gameclip-ui-platform -p gameclip-ui
 
       - name: Erzeugte TypeScript-Typen sind aktuell
         shell: pwsh

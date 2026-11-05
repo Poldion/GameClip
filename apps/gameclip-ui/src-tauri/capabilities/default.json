@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Hauptfenster: Kern, Ereignisse, Fenster. Die eigenen Befehle (auch der Ordner-Dialog, der auf der Rust-Seite läuft) sind App-Befehle und brauchen keine Freigabe.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default", "core:window:default"]
+}

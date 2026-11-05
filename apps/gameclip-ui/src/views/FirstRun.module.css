@@ -1,0 +1,96 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-5);
+  height: 100%;
+  overflow-y: auto;
+}
+
+.progress {
+  display: flex;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.progress li {
+  padding: 4px 12px;
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: var(--text-s);
+}
+
+.progress li[data-done] {
+  color: var(--text-2);
+}
+
+.progress li[data-active] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(520px, 100%);
+  padding: var(--space-5) var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow);
+}
+
+.card h1 {
+  font-size: var(--text-l);
+}
+
+.card p {
+  margin: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hint {
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.path {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.meter {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 80ms linear;
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

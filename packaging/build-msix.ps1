@@ -27,14 +27,21 @@ $bin = $sdk.DirectoryName
 # 1. Release-Build.
 Push-Location $repo
 try {
-    cargo build --release -p gameclipd -p gameclip-worker
+    # Oberfläche: erst das Frontend (dist/), das Tauri in die Exe einbettet.
+    Push-Location (Join-Path $repo 'apps/gameclip-ui')
+    try {
+        if (-not (Test-Path node_modules)) { npm ci; if ($LASTEXITCODE -ne 0) { throw "npm ci fehlgeschlagen ($LASTEXITCODE)" } }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build fehlgeschlagen ($LASTEXITCODE)" }
+    } finally { Pop-Location }
+    cargo build --release -p gameclipd -p gameclip-worker -p gameclip-ui
     if ($LASTEXITCODE -ne 0) { throw "cargo build fehlgeschlagen ($LASTEXITCODE)" }
 } finally { Pop-Location }
 
 # 2. Layout.
 Remove-Item -Recurse -Force $layout -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $layout, (Join-Path $layout 'assets'), (Join-Path $layout 'licenses') | Out-Null
-foreach ($exe in 'gameclipd.exe', 'gameclip-worker.exe') {
+foreach ($exe in 'gameclipd.exe', 'gameclip-worker.exe', 'gameclip.exe') {
     Copy-Item (Join-Path $repo "target/release/$exe") $layout
 }
 # Nur die DLLs, die Dienst und Worker laden (dumpbin /dependents, 2026-11); avdevice und
@@ -45,6 +52,7 @@ foreach ($dll in 'avcodec-62.dll', 'avformat-62.dll', 'avutil-60.dll', 'swresamp
 Copy-Item (Join-Path $repo 'packaging/assets/*.png') (Join-Path $layout 'assets')
 Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $layout 'licenses/GameClip-LICENSE.txt')
 Copy-Item (Join-Path $repo 'THIRD_PARTY_LICENSES.md') (Join-Path $layout 'licenses/THIRD_PARTY_LICENSES.md')
+Copy-Item (Join-Path $repo 'THIRD_PARTY_LICENSES_JS.md') (Join-Path $layout 'licenses/THIRD_PARTY_LICENSES_JS.md')
 Copy-Item (Join-Path $repo 'third_party/ffmpeg/LICENSE.txt') (Join-Path $layout 'licenses/FFmpeg-LICENSE.txt')
 $lock = Get-Content (Join-Path $repo 'packaging/ffmpeg/ffmpeg.lock') | Where-Object { $_ -match '^(version|source) =' }
 Set-Content (Join-Path $layout 'licenses/FFmpeg-SOURCE.txt') (@(

@@ -6,3 +6,6 @@ packaging/out/
 *.msix
 *.pfx
 *.lcov
+*.tsbuildinfo
+apps/gameclip-ui/src-tauri/gen/
+.claude/

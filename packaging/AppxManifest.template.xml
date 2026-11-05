@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later
      MSIX-Manifest (Design, Datei 68). Platzhalter ersetzt packaging/build-msix.ps1:
-     {{VERSION}}, {{PUBLISHER}}. Das M0-Paket enthält nur den Dienst und den Worker; die
-     Oberfläche (Application "GameClip" mit Protokoll gameclip:) kommt mit M3. -->
+     {{VERSION}}, {{PUBLISHER}}. Zwei Anwendungen: die Oberfläche "GameClip" (Startmenü,
+     Protokoll gameclip:) und der Dienst "Service" (ohne Eintrag, mit Autostart). Die Id
+     "Service" bleibt, weil die AUMID <PFN>!Service für Toasts und den Dienststart gilt. -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
@@ -33,6 +34,24 @@
   </Resources>
 
   <Applications>
+    <Application Id="GameClip" Executable="gameclip.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="GameClip"
+        Description="Clips der letzten Minute per Hotkey"
+        BackgroundColor="transparent"
+        Square150x150Logo="assets\Square150x150Logo.png"
+        Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png" Square310x310Logo="assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- Ohne Parameters: Windows übergibt den URI (gameclip:reveal?id=…) als Argument. -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="gameclip">
+            <uap:DisplayName>GameClip</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
+    </Application>
     <Application Id="Service" Executable="gameclipd.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="GameClip"

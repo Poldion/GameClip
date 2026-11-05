@@ -1,0 +1,47 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  min-height: 48px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+
+.bar[data-state="buffering"] .dot {
+  background: var(--ok);
+}
+
+.bar[data-state="failed"] .dot {
+  background: var(--danger);
+}
+
+.bar[data-state="recovering"] .dot,
+.bar[data-state="reconfiguring"] .dot {
+  background: var(--warn);
+}
+
+.text {
+  color: var(--text);
+}
+
+.badge {
+  font-size: var(--text-s);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.spacer {
+  flex: 1;
+}

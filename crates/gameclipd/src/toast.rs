@@ -24,7 +24,7 @@ pub fn aumid() -> String {
     }
 }
 
-fn package_family_name() -> Option<String> {
+pub(crate) fn package_family_name() -> Option<String> {
     use windows::Win32::Foundation::ERROR_SUCCESS;
     use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFamilyName;
     let mut len = 0u32;

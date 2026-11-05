@@ -1445,6 +1445,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `service.rs`: Start des Dienstes über `IApplicationActivationManager::ActivateApplication("<PFN>!GameClipService")`; Autostart über `StartupTask::GetAsync(STARTUP_TASK_ID)` mit `RequestEnableAsync`/`Disable`.
     *   `clipboard.rs` (`clipboard-win`, CF_HDROP), `drag.rs` (Crate `drag`), `reveal.rs` (`SHOpenFolderAndSelectItems`), `thumbnail.rs` (`IShellItemImageFactory::GetImage`, PNG-Kodierung über WIC), `media.rs`: einzige Stelle der Prüfung auf das Media Feature Pack, über `LoadLibraryExW("mfplat.dll", LOAD_LIBRARY_SEARCH_SYSTEM32)` (danach `FreeLibrary`). Media Foundation wird nie zur Ladezeit gelinkt, damit die Oberfläche auf N-Editionen startet und den Hinweis zeigen kann. Der Dienst meldet das nicht; die Oberfläche fragt es selbst ab.
 *   **Begründung:** Alle Windows-Aufrufe der Oberfläche an einer Stelle; `gameclip-ui` selbst nennt `windows` nicht.
+*   **Umgesetzt 2026-11 (M2):**
+    *   `pipe_client.rs`: Eine synchrone Pipe serialisiert Lesen und Schreiben auf demselben Handle. Deshalb besitzt ein einziger I/O-Thread die Pipe. Er schreibt wartende Anfragen, liest nur, wenn `PeekNamedPipe` Daten meldet, und verteilt Antworten nach `id` und Ereignisse nach dem Feld `event`. Geöffnet wird mit `SECURITY_IDENTIFICATION`. Die Serverprüfung vergleicht den Programmpfad ohne Groß-/Kleinschreibung und ohne `\\?\`. Ohne Paket (Entwicklung) gibt es keinen Installationsort, dann wird nicht geprüft.
+    *   `service.rs`: Die AUMID ist `<PFN>!Service`, weil die Application-Id im Manifest seit M0 `Service` heißt und Toasts darauf aufbauen. Ohne Paket startet `gameclipd.exe` neben der eigenen Exe.
+    *   `clipboard.rs` nutzt dieselbe `CF_HDROP`-Logik wie der Dienst statt `clipboard-win`; die etwa 30 Zeilen sind kein eigenes Crate wert. `thumbnail.rs` läuft auf einem eigenen STA-Thread, weil das Protokoll auf Tokio-Threads ohne COM-Apartment aufgerufen wird.
+    *   `drag.rs` kommt mit M3 (Drag-and-drop steht dort).
+    *   Test: `gameclipd/tests/ipc.rs` prüft den Client gegen den echten Pipe-Server (Antworten und Ereignisse gemischt; ein falscher Serverpfad wird abgelehnt).
 
 #### `apps/gameclip-ui` (Tauri + React)
 
@@ -1462,6 +1468,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `ipc.rs`: nutzt `gameclip-ui-platform::pipe_client`. Ist keine Pipe erreichbar: `service::start()`, dann 10 s lang alle 500 ms erneut; danach Ereignis `service_unreachable` ans Frontend. Bei `VersionMismatch` Ereignis `version_mismatch`. Dienst-Ereignisse werden als Tauri-Events weitergegeben. Beim ersten Start `service::enable_autostart()`.
     *   `clip_protocol.rs`: `register_asynchronous_uri_scheme_protocol("clip", …)`. Routen `/<clip_id>` (Datei) und `/thumb/<clip_id>` (Vorschaubild). Pfad nur über `GetClip` vom Dienst. Range-Formen `bytes=a-b`, `bytes=a-` und `bytes=-n` werden unterstützt; die Antwort ist 206 mit höchstens 1 MiB Daten, korrektem `Content-Range: bytes a-e/size` und `Accept-Ranges: bytes` (der Player fordert den Rest selbst nach). Ohne Range → 200 mit der ganzen Datei als Stream. Unbekannte ID → 404; 416 nur, wenn `a ≥ size`.
     *   `commands.rs`: je Protokollbefehl ein Tauri-Befehl, dazu `copy_file`, `start_drag`, `reveal`, `set_autostart`.
+*   **Umgesetzt 2026-11 (M2):**
+    *   Statt eines Tauri-Befehls je Protokollbefehl gibt es einen allgemeinen `call(cmd: Command) -> Response`. Die Typisierung je Befehl liegt in `ipc.ts` (`makeIpc`), das Mock nutzt denselben Weg. Neue Protokollbefehle brauchen so keinen Rust-Code in der Oberfläche.
+    *   Dazu kommen `connection`, `pick_folder` (Ordnerdialog auf der Rust-Seite über `tauri-plugin-dialog`, daher ohne Plugin-Freigabe in `capabilities`), `get_autostart`, `has_media_foundation` und `initial_view`.
+    *   Die Exe heißt `gameclip.exe`. Sie läuft als Einzelinstanz (`tauri-plugin-single-instance`). Ein zweiter Start holt das Fenster nach vorn. `--view=gallery|settings` (aus dem Tray des Dienstes, `gameclipd::ui_launch`) wechselt die Ansicht, `gameclip:reveal?id=…` zeigt die Datei.
+    *   Nach 10 s ohne Dienst zeigt die Oberfläche `service_unreachable`, versucht es aber alle 5 s weiter (z. B. wenn der Dienst danach aus dem Tray neu startet).
+    *   Tests: Range-Formen, 206/200/416 und beide Startargumente.
 
 ##### 61. `apps/gameclip-ui/package.json`, `vite.config.ts`, `vitest.config.ts`, `tsconfig.json`, `index.html`, `src/test/setup.ts` (Create)
 
@@ -1512,6 +1524,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
         *   `GameClip` (`Executable="gameclip-ui.exe"`, Startmenü) mit `<uap:Extension Category="windows.protocol"><uap:Protocol Name="gameclip"/></uap:Extension>` (ohne `Parameters`, der URI kommt als Argument).
         *   `GameClipService` (`Executable="gameclipd.exe"`, `uap:VisualElements AppListEntry="none"`) mit `<uap5:Extension Category="windows.startupTask" Executable="gameclipd.exe" EntryPoint="Windows.FullTrustApplication"><uap5:StartupTask TaskId="GameClipServiceStartup" Enabled="false" DisplayName="GameClip"/></uap5:Extension>`.
     *   Das M0-Paket enthält nur `GameClipService` und den Worker.
+    *   **Umgesetzt 2026-11 (M2):** Die Application-Ids heißen `GameClip` (`gameclip.exe`, mit Protokoll `gameclip`) und `Service` (statt `GameClipService`, wie seit M0 installiert). `THIRD_PARTY_LICENSES_JS.md` (`npm run licenses`, nur `dependencies`, mit Lizenztext) liegt neben `THIRD_PARTY_LICENSES.md` im Paket.
     *   Capabilities: `<rescap:Capability Name="runFullTrust"/>`, `<DeviceCapability Name="microphone"/>`, `graphicsCaptureWithoutBorder` und `graphicsCaptureProgrammatic` im laut Q15 richtigen Namespace.
 
 ##### 69. `packaging/build-msix.ps1` (Create)

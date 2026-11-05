@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Tray-Symbol und Menü (Design, Datei 51). M0-Umfang: Zustandsfarbe, Tooltip, Menü mit
 //! „Clip speichern“, „Letzten Clip kopieren“ (G1a, CF_HDROP), „Aufnahme pausieren/fortsetzen“,
-//! „Mikrofon pausieren“, „Beenden“. Die sechs gestalteten Symbole folgen mit Datei 71; bis dahin
+//! „Mikrofon pausieren“, „Galerie öffnen“, „Einstellungen“, „Beenden“. Die sechs gestalteten Symbole folgen mit Datei 71; bis dahin
 //! ein farbiger Kreis je Zustand.
 
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -15,6 +15,8 @@ pub enum TrayCommand {
     CopyLastClipSmall,
     TogglePause,
     ToggleMic,
+    OpenGallery,
+    OpenSettings,
     Quit,
 }
 
@@ -46,6 +48,8 @@ pub struct Tray {
     copy_small: MenuItem,
     pause: MenuItem,
     mic: CheckMenuItem,
+    gallery: MenuItem,
+    settings: MenuItem,
     quit: MenuItem,
     last: TrayView,
 }
@@ -88,6 +92,8 @@ impl Tray {
         );
         let pause = MenuItem::new("Aufnahme pausieren", true, None);
         let mic = CheckMenuItem::new("Mikrofon pausieren", true, view.mic_paused, None);
+        let gallery = MenuItem::new("Galerie öffnen", true, None);
+        let settings = MenuItem::new("Einstellungen", true, None);
         let quit = MenuItem::new("Beenden", true, None);
         let menu = Menu::new();
         menu.append_items(&[
@@ -97,6 +103,9 @@ impl Tray {
             &PredefinedMenuItem::separator(),
             &pause,
             &mic,
+            &PredefinedMenuItem::separator(),
+            &gallery,
+            &settings,
             &PredefinedMenuItem::separator(),
             &quit,
         ])
@@ -114,6 +123,8 @@ impl Tray {
             copy_small,
             pause,
             mic,
+            gallery,
+            settings,
             quit,
             last: view.clone(),
         };
@@ -152,6 +163,10 @@ impl Tray {
                 TrayCommand::TogglePause
             } else if id == self.mic.id() {
                 TrayCommand::ToggleMic
+            } else if id == self.gallery.id() {
+                TrayCommand::OpenGallery
+            } else if id == self.settings.id() {
+                TrayCommand::OpenSettings
             } else if id == self.quit.id() {
                 TrayCommand::Quit
             } else {

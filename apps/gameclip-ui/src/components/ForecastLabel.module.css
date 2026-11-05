@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.label {
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.label[data-level="warning"] {
+  color: var(--warn);
+}
+
+.label[data-level="rejected"] {
+  color: var(--danger);
+}

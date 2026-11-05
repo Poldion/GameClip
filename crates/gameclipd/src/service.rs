@@ -411,6 +411,10 @@ impl Service {
                     let on = !self.machine.mic_paused;
                     self.feed(StateEvent::MicPause(on));
                 }
+                TrayCommand::OpenGallery => crate::ui_launch::open(crate::ui_launch::View::Gallery),
+                TrayCommand::OpenSettings => {
+                    crate::ui_launch::open(crate::ui_launch::View::Settings)
+                }
                 TrayCommand::Quit => {
                     self.feed(StateEvent::Quit);
                 }

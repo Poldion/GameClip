@@ -1,0 +1,35 @@
+{
+  "name": "gameclip-ui",
+  "private": true,
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc -b --noEmit",
+    "gen:types": "node scripts/check-generated.mjs",
+    "licenses": "node scripts/js-licenses.mjs",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@testing-library/react": "^16",
+    "@testing-library/dom": "^10",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "jsdom": "^25",
+    "license-checker": "^25",
+    "typescript": "^5",
+    "vite": "^6",
+    "vitest": "^3"
+  }
+}

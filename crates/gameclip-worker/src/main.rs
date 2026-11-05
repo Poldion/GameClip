@@ -32,7 +32,16 @@ fn main() {
             std::process::exit(1);
         }
     };
-    match gameclip_worker::trim::run(&job, &mut emit) {
+    let started = std::time::Instant::now();
+    let result = gameclip_worker::trim::run(&job, &mut emit);
+    if std::env::var_os("GAMECLIP_WORKER_TIMING").is_some() {
+        eprintln!("{}", gameclip_worker::timing::report());
+        eprintln!(
+            "gesamt           {:>8.1} ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    match result {
         Ok(out) => {
             emit(WorkerMessage::Done {
                 bytes: out.bytes,

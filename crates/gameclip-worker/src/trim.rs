@@ -26,7 +26,7 @@ use gameclip_media::{
 };
 use gameclip_protocol::messages::ExportProfile;
 use gameclip_protocol::worker::{WorkerError, WorkerJob, WorkerMessage};
-use rsmpeg::avcodec::AVPacket;
+use rsmpeg::avcodec::{AVCodecParameters, AVPacket};
 use rsmpeg::ffi;
 
 use crate::size_target::{plan_for, with_correction};
@@ -81,7 +81,8 @@ pub fn run(job: &WorkerJob, emit: &mut dyn FnMut(WorkerMessage)) -> Result<Outpu
     // Das Spiel behält Vorrang auf der GPU (Design: niedrigster Wert).
     let _ = gpu.set_gpu_priority(-7);
 
-    let clip_audio = decode_audio(source).map_err(decode_err)?;
+    let clip_audio =
+        crate::timing::time("audio_decode", || decode_audio(source)).map_err(decode_err)?;
     let track_audio = match (&job.profile, &job.tracks_path) {
         (ExportProfile::SeparateTracks, Some(p)) if Path::new(p).is_file() => {
             decode_audio(Path::new(p)).map_err(decode_err)?
@@ -202,6 +203,8 @@ fn encode(
         bitrate_bps: plan.video_bps,
         profile: EncodeProfile::Export,
     };
+    crate::timing::add("pass", std::time::Duration::ZERO);
+    let setup = std::time::Instant::now();
     let device = HwDevice::from_gpu(gpu).map_err(encode_err)?;
     let (mut encoder, mut frames) = open_encoder(job, gpu, &device, &cfg)?;
     emit(WorkerMessage::Encoder {
@@ -224,15 +227,43 @@ fn encode(
         None
     };
 
+    crate::timing::add("setup", setup.elapsed());
     let (in_us, out_us) = (job.in_us as i64, job.out_us as i64);
     let span = (out_us - in_us) as f64;
     // Ausgabe im festen Raster der Ziel-Bildrate; bei halber Rate fällt jedes zweite Bild weg.
     let out_time = |k: i64| k * 1_000_000 / i64::from(fps);
     let half_src = 500_000 / i64::from(info.fps.max(1));
+    // Ton parallel zum Video kodieren: die Länge steht vorab fest (Raster der Ziel-Bildrate).
+    let expected_k = ((out_us - in_us) * i64::from(fps)).div_euclid(1_000_000)
+        + i64::from(((out_us - in_us) * i64::from(fps)).rem_euclid(1_000_000) != 0);
+    let expected_us = out_time(expected_k) as u64;
+    let audio_thread = spawn_audio(audio, job.in_us, expected_us);
+    // Kodieren auf einem eigenen Thread: Senden und Abholen warten auf AMF (1,7 s je 60 s,
+    // gemessen 2026-11); so dekodiert der Hauptthread in der Zeit das nächste Bild.
+    let (frame_tx, frame_rx) =
+        std::sync::mpsc::sync_channel::<(rsmpeg::avutil::AVFrame, i64, bool)>(4);
+    let encoder_thread =
+        std::thread::spawn(move || -> Result<(VideoEncoder, Vec<AVPacket>), Fail> {
+            let start = std::time::Instant::now();
+            let mut packets = Vec::new();
+            for (mut frame, pts, key) in frame_rx {
+                encoder.send(&mut frame, pts, key).map_err(encode_err)?;
+                while let Some(p) = encoder.receive().map_err(encode_err)? {
+                    packets.push(p);
+                }
+            }
+            encoder.flush().map_err(encode_err)?;
+            while let Some(p) = encoder.receive().map_err(encode_err)? {
+                packets.push(p);
+            }
+            eprintln_timing("encode_thread", start.elapsed());
+            Ok((encoder, packets))
+        });
     let mut k = 0i64;
-    let mut packets: Vec<AVPacket> = Vec::new();
     let mut last_percent = -1i32;
-    while let Some(f) = decoder.next_frame().map_err(decode_err)? {
+    while let Some(f) =
+        crate::timing::time("decode", || decoder.next_frame()).map_err(decode_err)?
+    {
         if f.pts_us < in_us - half_src {
             continue;
         }
@@ -247,7 +278,8 @@ fn encode(
         let (tex, slice) = if f.is_hardware() {
             f.texture().map_err(decode_err)?
         } else {
-            uploaded = uploader.upload(&f.frame).map_err(decode_err)?;
+            uploaded =
+                crate::timing::time("upload", || uploader.upload(&f.frame)).map_err(decode_err)?;
             uploaded.texture().map_err(decode_err)?
         };
         let src = TexRef {
@@ -256,7 +288,8 @@ fn encode(
         };
         let pts = out_time(k);
         if let Some(pool) = frames.as_mut() {
-            let mut hw = pool.get().map_err(encode_err)?;
+            let mut hw = crate::timing::time("pool_get", || pool.get()).map_err(encode_err)?;
+            let convert = std::time::Instant::now();
             {
                 let (dst, dst_slice) = hw.texture().map_err(encode_err)?;
                 converter
@@ -269,9 +302,11 @@ fn encode(
                     )
                     .map_err(encode_err)?;
             }
-            encoder
-                .send(&mut hw.frame, pts, k == 0)
-                .map_err(encode_err)?;
+            crate::timing::add("convert", convert.elapsed());
+            let frame = std::mem::replace(&mut hw.frame, rsmpeg::avutil::AVFrame::new());
+            if crate::timing::time("enqueue", || frame_tx.send((frame, pts, k == 0))).is_err() {
+                break; // Encoder-Thread beendet: Fehler kommt beim join.
+            }
         } else {
             let (target, staging) = sw_target.as_ref().expect("Software-Ziel");
             converter
@@ -283,11 +318,10 @@ fn encode(
                     },
                 )
                 .map_err(encode_err)?;
-            let mut frame = download_nv12(gpu, target, staging, w, h).map_err(encode_err)?;
-            encoder.send(&mut frame, pts, k == 0).map_err(encode_err)?;
-        }
-        while let Some(p) = encoder.receive().map_err(encode_err)? {
-            packets.push(p);
+            let frame = download_nv12(gpu, target, staging, w, h).map_err(encode_err)?;
+            if frame_tx.send((frame, pts, k == 0)).is_err() {
+                break;
+            }
         }
         k += 1;
         let percent = ((rel as f64 / span) * 90.0) as i32;
@@ -298,28 +332,28 @@ fn encode(
             });
         }
     }
-    encoder.flush().map_err(encode_err)?;
-    while let Some(p) = encoder.receive().map_err(encode_err)? {
-        packets.push(p);
-    }
+    let flush = std::time::Instant::now();
+    drop(frame_tx);
+    let (encoder, packets) = encoder_thread.join().expect("Encoder-Thread")?;
     if packets.is_empty() {
         return Err(Fail(
             WorkerError::DecodeFailed,
             "keine Bilder im Zeitraum".into(),
         ));
     }
+    crate::timing::add("encode_flush", flush.elapsed());
     let duration_us = out_time(k) as u64;
-
-    // Ton: sample-genau auf die Videolänge, neu kodiert.
-    let mut audio_packets = Vec::new();
-    for a in audio {
-        let pcm = a.pcm.cut(job.in_us, job.in_us + duration_us);
-        let mut enc = AudioEncoder::new(a.bps).map_err(encode_err)?;
-        let mut p = enc.push(&pcm).map_err(encode_err)?;
-        p.extend(enc.finish().map_err(encode_err)?);
-        audio_packets.push((a.title.clone(), enc.codec_parameters(), p));
+    let audio_start = std::time::Instant::now();
+    let mut audio_packets = audio_thread.join().expect("Ton-Thread")?;
+    if duration_us != expected_us {
+        // Weniger Bilder als erwartet (Datei endet früher): Ton auf die echte Länge.
+        audio_packets = spawn_audio(audio, job.in_us, duration_us)
+            .join()
+            .expect("Ton-Thread")?;
     }
+    crate::timing::add("audio_wait", audio_start.elapsed());
     emit(WorkerMessage::Progress { percent: 95.0 });
+    let mux = std::time::Instant::now();
 
     let created = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
@@ -357,9 +391,50 @@ fn encode(
         true,
     )
     .map_err(|e| Fail(WorkerError::Io, e.to_string()))?;
+    crate::timing::add("mux", mux.elapsed());
     let bytes = std::fs::metadata(part)
         .map(|m| m.len())
         .map_err(|e| Fail(WorkerError::Io, e.to_string()))?;
     emit(WorkerMessage::Progress { percent: 100.0 });
     Ok(Output { bytes, duration_us })
+}
+
+type AudioResult = Result<Vec<(String, AVCodecParameters, Vec<AVPacket>)>, Fail>;
+
+/// Schneidet den Ton sample-genau auf `[in_us, in_us + duration_us)` und kodiert ihn auf einem
+/// eigenen Thread (eigene Kopie der Samples).
+fn spawn_audio(
+    audio: &[AudioOut<'_>],
+    in_us: u64,
+    duration_us: u64,
+) -> std::thread::JoinHandle<AudioResult> {
+    let work: Vec<(String, u64, Vec<f32>)> = audio
+        .iter()
+        .map(|a| {
+            (
+                a.title.clone(),
+                a.bps,
+                a.pcm.cut(in_us, in_us + duration_us),
+            )
+        })
+        .collect();
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let mut out = Vec::new();
+        for (title, bps, pcm) in work {
+            let mut enc = AudioEncoder::new(bps).map_err(encode_err)?;
+            let mut p = enc.push(&pcm).map_err(encode_err)?;
+            p.extend(enc.finish().map_err(encode_err)?);
+            out.push((title, enc.codec_parameters(), p));
+        }
+        eprintln_timing("audio_encode", start.elapsed());
+        Ok(out)
+    })
+}
+
+/// Der Ton-Thread hat eigene Zeitsummen (thread-lokal); seine Dauer geht direkt nach stderr.
+fn eprintln_timing(name: &str, d: std::time::Duration) {
+    if std::env::var_os("GAMECLIP_WORKER_TIMING").is_some() {
+        eprintln!("{name:<16} {:>8.1} ms  (Thread)", d.as_secs_f64() * 1000.0);
+    }
 }

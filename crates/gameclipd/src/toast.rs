@@ -39,7 +39,9 @@ fn package_family_name() -> Option<String> {
         {
             return None;
         }
-        Some(String::from_utf16_lossy(&buf[..len.saturating_sub(1) as usize]))
+        Some(String::from_utf16_lossy(
+            &buf[..len.saturating_sub(1) as usize],
+        ))
     }
 }
 

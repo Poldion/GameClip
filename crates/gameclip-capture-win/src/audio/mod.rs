@@ -114,11 +114,11 @@ impl AudioPipeline {
         let (tx, rx) = unbounded();
 
         let mut encoders = vec![
-            (Track::Mix, AudioEncoder::new(MIX_BPS)?),
-            (Track::System, AudioEncoder::new(TRACK_BPS)?),
+            (Track::Mix, AudioEncoder::new_fast(MIX_BPS)?),
+            (Track::System, AudioEncoder::new_fast(TRACK_BPS)?),
         ];
         if cfg.mic.is_some() {
-            encoders.push((Track::Mic, AudioEncoder::new(TRACK_BPS)?));
+            encoders.push((Track::Mic, AudioEncoder::new_fast(TRACK_BPS)?));
         }
         let params = encoders
             .iter()

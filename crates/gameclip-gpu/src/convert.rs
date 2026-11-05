@@ -5,7 +5,10 @@
 //! Wertebereich, Seitenverhältnis mit schwarzem Rand. Ziele sind meist Slices eines
 //! Texture-Arrays aus FFmpegs Frame-Pool.
 
+use std::cell::RefCell;
 use std::mem::ManuallyDrop;
+
+use windows_core::Interface;
 
 use windows::Win32::Foundation::{RECT, TRUE};
 use windows::Win32::Graphics::Direct3D11::{
@@ -47,6 +50,31 @@ pub struct Converter {
     processor: ID3D11VideoProcessor,
     in_size: (u32, u32),
     out_size: (u32, u32),
+    /// Views je (Textur, Slice). Neue Views je Bild kosteten auf der RX 6750 XT rund 2,5 ms
+    /// (gemessen 2026-11). Eine View hält ihre Textur am Leben, der Zeiger bleibt also eindeutig;
+    /// die Obergrenze verhindert, dass dynamische Pools den Speicher wachsen lassen.
+    inputs: RefCell<Vec<((usize, u32), ID3D11VideoProcessorInputView)>>,
+    outputs: RefCell<Vec<((usize, u32), ID3D11VideoProcessorOutputView)>>,
+}
+
+/// Höchstzahl zwischengespeicherter Views je Richtung.
+const VIEW_CACHE: usize = 64;
+
+fn cached<V: Clone>(
+    cache: &RefCell<Vec<((usize, u32), V)>>,
+    key: (usize, u32),
+    make: impl FnOnce() -> Result<V>,
+) -> Result<V> {
+    if let Some((_, v)) = cache.borrow().iter().find(|(k, _)| *k == key) {
+        return Ok(v.clone());
+    }
+    let v = make()?;
+    let mut c = cache.borrow_mut();
+    if c.len() >= VIEW_CACHE {
+        c.clear();
+    }
+    c.push((key, v.clone()));
+    Ok(v)
 }
 
 impl Converter {
@@ -127,6 +155,8 @@ impl Converter {
             processor,
             in_size,
             out_size,
+            inputs: RefCell::new(Vec::new()),
+            outputs: RefCell::new(Vec::new()),
         })
     }
 
@@ -140,8 +170,16 @@ impl Converter {
 
     /// Wandelt `src` in `dst` um. `dst` muss NV12 mit `D3D11_BIND_RENDER_TARGET` sein.
     pub fn run(&self, src: TexRef<'_>, dst: TexRef<'_>) -> Result<()> {
-        let input = self.input_view(src)?;
-        let output = self.output_view(dst)?;
+        let input = cached(
+            &self.inputs,
+            (src.tex.as_raw() as usize, src.array_slice),
+            || self.input_view(src),
+        )?;
+        let output = cached(
+            &self.outputs,
+            (dst.tex.as_raw() as usize, dst.array_slice),
+            || self.output_view(dst),
+        )?;
         let stream = D3D11_VIDEO_PROCESSOR_STREAM {
             Enable: TRUE,
             pInputSurface: ManuallyDrop::new(Some(input)),

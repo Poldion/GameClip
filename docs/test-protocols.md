@@ -94,6 +94,7 @@ Makro-Software) im Spiel.
 | Datum | Ergebnis |
 | --- | --- |
 | 2026-11-05 | 60-s-Clip auf 10 MB in 14,4–16,5 s bei laufendem Valorant (knapp). Bild N = Bild N: Test `trim`. Bildrate des Spiels und verworfene Bilder offen. |
+| 2026-11-05 | Nach Beschleunigung ohne Spiel: 7,2 s (vorher 10,7 s); Grenze ist der Hardware-Decoder (5,4 s). Mit Spiel neu zu messen. |
 
 ## G1a – Vergleich mit Game Bar und OBS (Ende M0)
 

@@ -1422,6 +1422,13 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
             *   Schnitt bei Bild 37 bis vor Bild 97: Die Ausgabe beginnt mit Bild 37 und endet mit Bild 96, genau 60 Bilder.
             *   Die Tonspur ist laut Container exakt so lang wie das Video. Ein Decoder liefert zusätzlich die AAC-Füllung des letzten Blocks (256 Samples); Tests messen deshalb die Spurdauer.
             *   Zielgröße 2 MB, 600 KB und 250 KB unterschritten; 60 KB für 4 s endet ohne Kodieren mit `TooLarge`, wie der Plan vorhersagt.
+        *   **Beschleunigt (2026-11), 60-s-Valorant-Clip 1080p60 auf 10 MB (Plan: 720p30), ohne laufendes Spiel: 10,7 s → 7,2 s.** Gemessen mit `GAMECLIP_WORKER_TIMING=1` (Summen je Abschnitt nach stderr).
+            *   **Ton-Puffer:** `AudioEncoder::push` hat nach jedem 1024er-Block vorne aus einem `Vec` entfernt (O(n²) bei 60 s am Stück: 3,4 s). Jetzt mit Lesezeiger: 1,1 s.
+            *   **Ton parallel:** Der Ton wird auf einem eigenen Thread parallel zum Video kodiert; die Länge steht vorab fest (Raster der Ziel-Bildrate). Endet die Datei früher, wird der Ton mit der echten Länge nachkodiert.
+            *   **Encoder-Thread:** Das Video wird auf einem eigenen Thread kodiert (Kanal mit 4 Bildern). Mit AMF bringt das nur 0,2 s, mit x264 mehr.
+            *   **Untergrenze ist der Hardware-Decoder:** D3D11VA dekodiert 1080p60-H.264 auf der RX 6750 XT mit etwa 675 Bildern/s, also 5,4 s je 60 s, gemessen auch mit `ffmpeg.exe` allein. Der Converter wartet auf ihn. Software-Dekodieren wäre schneller (3,5 s), belegt aber alle CPU-Kerne; das widerspricht S9 (Bildrate des Spiels).
+            *   **Views:** Zwischengespeicherte VideoProcessor-Views (`Converter`) änderten nichts Messbares, bleiben aber (keine Neuanlage je Bild).
+        *   **Aufnahme:** nutzt jetzt `AudioEncoder::new_fast` (`aac_coder=fast`): 60 s Ton in 0,54 s statt 1,22 s, also etwa die halbe CPU-Zeit für drei Tonspuren in Echtzeit (S1: CPU ≤ 3 %). Exporte bleiben beim genaueren Standard (`twoloop`), weil sie parallel laufen.
 
 ##### 57. `crates/gameclip-worker/tests/trim.rs` (Create)
 

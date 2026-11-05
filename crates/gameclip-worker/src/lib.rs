@@ -5,4 +5,5 @@
 #![cfg(windows)]
 
 pub mod size_target;
+pub mod timing;
 pub mod trim;

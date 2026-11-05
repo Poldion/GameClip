@@ -136,3 +136,36 @@ fn calls_unknown_commands_events_and_disconnect() {
     let (conns, gone) = handler.join().unwrap();
     assert!(conns.iter().all(|c| *c == gone));
 }
+
+/// Der Client der Oberfläche gegen den echten Server: Antworten und Ereignisse kommen
+/// gemischt über eine Pipe und werden richtig getrennt.
+#[test]
+fn ui_client_against_server() {
+    use gameclip_ui_platform::pipe_client::{Client, ServerCheck};
+    let name = pipe("client");
+    let (tx, rx) = unbounded();
+    let events = Broadcaster::default();
+    IpcServer::start_named(name.clone(), tx, events.clone()).unwrap();
+    let ev2 = events.clone();
+    std::thread::spawn(move || {
+        while let Ok(IpcRequest::Call { id, cmd, reply, .. }) = rx.recv() {
+            // Vor jeder Antwort ein Ereignis, damit beides durcheinander ankommt.
+            ev2.send(ServiceEvent::MicLevel { dbfs: -1.0 });
+            let _ = reply.send(Response::ok(id, &format!("{cmd:?}")));
+        }
+    });
+    // Eigene Exe als erwarteter Server: muss passen, eine fremde nicht.
+    let me = std::env::current_exe().unwrap();
+    let (client, ev_rx) = Client::connect_to(&name, "test", &ServerCheck::Exe(me)).unwrap();
+    assert_eq!(client.hello.protocol, PROTOCOL_VERSION);
+    for _ in 0..3 {
+        let r = client
+            .call(Command::GetStatus, Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(r.body.unwrap(), serde_json::json!("GetStatus"));
+    }
+    let ev = ev_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(ev, ServiceEvent::MicLevel { dbfs: -1.0 });
+    let wrong = ServerCheck::Exe(std::path::PathBuf::from(r"C:\nirgends\gameclipd.exe"));
+    assert!(Client::connect_to(&name, "test", &wrong).is_err());
+}

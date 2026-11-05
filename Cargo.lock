@@ -543,6 +543,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameclip-ui-platform"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "gameclip-core",
+ "gameclip-protocol",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "windows",
+ "windows-core",
+ "windows-future",
+]
+
+[[package]]
 name = "gameclip-worker"
 version = "0.1.0"
 dependencies = [
@@ -568,6 +584,7 @@ dependencies = [
  "gameclip-media",
  "gameclip-protocol",
  "gameclip-testsupport",
+ "gameclip-ui-platform",
  "rsmpeg",
  "rusqlite",
  "serde",

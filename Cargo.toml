@@ -9,6 +9,7 @@ members = [
     "crates/gameclip-capture-win",
     "crates/gameclipd",
     "crates/gameclip-worker",
+    "crates/gameclip-ui-platform",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ gameclip-gpu = { path = "crates/gameclip-gpu" }
 gameclip-testsupport = { path = "crates/gameclip-testsupport" }
 gameclip-media = { path = "crates/gameclip-media" }
 gameclip-capture-win = { path = "crates/gameclip-capture-win" }
+gameclip-ui-platform = { path = "crates/gameclip-ui-platform" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

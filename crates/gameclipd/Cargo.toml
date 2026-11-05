@@ -69,5 +69,6 @@ required-features = ["test-support"]
 [dev-dependencies]
 crossbeam-channel.workspace = true
 gameclip-testsupport.workspace = true
+gameclip-ui-platform.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

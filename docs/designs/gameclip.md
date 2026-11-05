@@ -508,7 +508,8 @@ Durchgesetzt wird das so:
 *   **Rust-Bibliotheken (Q16):** Versionen und Features in Datei 1 des Umsetzungsplans. `windows-capture` dient nur als Vorlage, weil die Pipeline ein eigenes, mit FFmpeg geteiltes D3D11-Gerät braucht. `global-hotkey` wird nicht genutzt, weil `SuspendHotkey`, `TestRegister` und der QPC-Zeitstempel des Tastendrucks einen eigenen Hotkey-Thread brauchen.
 *   **Lizenz des Projekts:** GPL-3.0-or-later.
 *   **Signatur:** SignPath Foundation (Q14); Ausweg siehe Risiko R3. Für Entwicklungs-Builds ein selbst erzeugtes Testzertifikat.
-*   **Updates:** über winget. Ein Tauri-Updater ist nicht eingebaut.
+*   **Updates:** über winget. Ein Tauri-Updater ist nicht eingebaut. *Ergänzt 2026-11-05 (Entscheidung des Autors):* In den Einstellungen gibt es „Nach Updates suchen“. Erst dieser Klick fragt die Releases auf GitHub ab (`api.github.com/repos/Poldion/GameClip/releases`, nur mit `User-Agent: GameClip/<Version>`); es gibt keinen Hintergrund-Check. „Herunterladen und installieren“ lädt das `.msix` nach `Downloads\GameClip-Update` und öffnet es im App Installer von Windows, der die App beendet und die Signatur prüft. Code: `gameclip-ui-platform/src/update.rs`, Befehle `check_update`/`install_update`. Das Repository muss dafür öffentlich sein; ohne Anmeldung antwortet GitHub sonst mit 404.
+*   **Releases bis zur SignPath-Signatur** *(2026-11-05)*: Der Release-Workflow signiert mit einem eigenen Testzertifikat (Subjekt `CN=GameClip Dev`, gleich dem Publisher der lokalen Testpakete, damit Updates darauf passen; eigener Schlüssel, gültig bis 2031-11-05). Der Schlüssel liegt nur in den Secrets `TEST_CERT_PFX`/`TEST_CERT_PASSWORD`, das Zertifikat in `packaging/GameClip-Release.cer`. Solche Releases sind Vorabversionen und enthalten `Install-GameClip.ps1`, das das Zertifikat einmal per UAC nach `LocalMachine\TrustedPeople` einträgt. Risiko: Wer den Schlüssel hat, kann Pakete signieren, denen diese Rechner vertrauen; deshalb nur bis Q14.
 
 ### Paket und Installation (T1: volles MSIX)
 
@@ -765,7 +766,7 @@ Alle Ablehnungen verweisen auf das [Entscheidungsregister im Brief](../../concep
     *   Kein `OpenProcess` auf fremde Prozesse (Spiel, Discord).
     *   Das MSIX-Paket ist signiert.
 *   **Datenschutz:**
-    *   Keine Netzwerkzugriffe. Das Manifest deklariert keine `internetClient`-Fähigkeit.
+    *   Keine Netzwerkzugriffe, außer auf Klick „Nach Updates suchen“ (siehe Updates). Das Manifest deklariert keine `internetClient`-Fähigkeit; die braucht eine Full-Trust-App dafür nicht.
     *   Das Mikrofon ist standardmäßig an. Der erste Start weist darauf hin, das Tray zeigt den Mikrofonstatus, und eine Pause ist jederzeit möglich.
     *   Solange der PC gesperrt ist, nimmt GameClip nichts auf, und der Puffer wird geleert (D27).
     *   „Diagnose kopieren“ macht Benutzerpfade unkenntlich.
@@ -849,7 +850,7 @@ Gespeichert in `%APPDATA%\GameClip\settings.toml`. Typ `Settings` in `crates/gam
 
 *   Unbekannte Schlüssel bleiben erhalten: `merge_into(existing_toml, &settings)` schreibt die bekannten Felder in die vorhandene Datei als `toml::Table` und lässt alle anderen Schlüssel stehen (Option-Felder, die auf `None` stehen, werden entfernt). Der IPC-Typ enthält deshalb keine unbekannten Schlüssel. (Umgesetzt 2026-11 statt des früher geplanten Feldes `extra`.)
 *   `validate()` liefert `Vec<FieldError { key, reason }>`; `SetSettings` antwortet bei Fehlern mit `InvalidArgument` und dieser Liste im Feld `details`.
-*   **Autostart** ist keine Einstellung in der Datei. Der Schalter in der Oberfläche steuert direkt den MSIX-StartupTask (`STARTUP_TASK_ID`).
+*   **Autostart** ist keine Einstellung in der Datei. Der Schalter in der Oberfläche steuert direkt den MSIX-StartupTask (`STARTUP_TASK_ID`). *Korrektur 2026-11-05:* `StartupTask.GetAsync` findet nur Aufgaben der aufrufenden App (geprüft mit `Invoke-CommandInDesktopPackage`: aus „GameClip“ leer, aus „Service“ gefunden). Die Oberfläche fragt deshalb den Dienst über die Pipe (`GetAutostart`/`SetAutostart`), und der Dienst schaltet seine eigene Aufgabe.
 
 **Bitraten der Qualitätsstufen** *(vorläufig, Q1)*, in Mbit/s, 60 fps; 30 fps = 60 % davon:
 

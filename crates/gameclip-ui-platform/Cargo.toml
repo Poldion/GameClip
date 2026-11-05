@@ -12,6 +12,7 @@ drag = "2"
 gameclip-core.workspace = true
 gameclip-protocol.workspace = true
 raw-window-handle = "0.6"
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -39,6 +40,10 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+    "Web",
+    "Web_Http",
+    "Web_Http_Headers",
 ] }
 windows-collections = "0.3"
 windows-core.workspace = true

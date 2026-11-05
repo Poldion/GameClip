@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use gameclip_protocol::messages::{ClipEntry, Command, Response};
-use gameclip_ui_platform::{clipboard, media, reveal as reveal_mod};
+use gameclip_ui_platform::{clipboard, media, reveal as reveal_mod, update};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
@@ -134,6 +134,62 @@ pub async fn share(
     .map_err(|e| e.to_string())?;
     blocking(move || rx.recv().map_err(|e| e.to_string())).await???;
     Ok(())
+}
+
+/// Ergebnis von „Nach Updates suchen“ für die Einstellungen.
+#[derive(serde::Serialize)]
+pub struct UpdateCheck {
+    /// Installierte Version; `None` ohne Paket (Entwicklung).
+    current: Option<String>,
+    latest: Option<String>,
+    newer: bool,
+    page_url: Option<String>,
+    size_bytes: Option<u64>,
+}
+
+fn check_update_blocking() -> Result<(UpdateCheck, Option<update::Available>), String> {
+    let current = update::current_version();
+    let latest =
+        update::check().map_err(|e| format!("GitHub nicht erreichbar: {}", e.message()))?;
+    let newer = match (&latest, current) {
+        (Some(a), Some(c)) => a.version > c,
+        _ => false,
+    };
+    Ok((
+        UpdateCheck {
+            current: current.map(update::version_string),
+            latest: latest.as_ref().map(|a| update::version_string(a.version)),
+            newer,
+            page_url: latest.as_ref().map(|a| a.page_url.clone()),
+            size_bytes: latest.as_ref().map(|a| a.size_bytes),
+        },
+        latest.filter(|_| newer),
+    ))
+}
+
+/// Fragt GitHub nach einer neueren Version. Nur auf Klick des Benutzers (kein Hintergrund-Check).
+#[tauri::command]
+pub async fn check_update() -> Result<UpdateCheck, String> {
+    blocking(|| check_update_blocking().map(|(c, _)| c)).await?
+}
+
+/// Lädt die neueste Version und öffnet sie im App Installer, der GameClip beendet und
+/// aktualisiert. Prüft selbst noch einmal; das Frontend gibt keine Adresse vor.
+#[tauri::command]
+pub async fn install_update() -> Result<(), String> {
+    blocking(|| {
+        let (_, available) = check_update_blocking()?;
+        let available = available.ok_or("Keine neuere Version vorhanden.")?;
+        let path = update::download(&available)
+            .map_err(|e| format!("Download fehlgeschlagen: {}", e.message()))?;
+        tracing::info!(
+            "Update {} geladen nach {}",
+            update::version_string(available.version),
+            path.display()
+        );
+        update::open_installer(&path).map_err(|e| e.message().to_string())
+    })
+    .await?
 }
 
 #[tauri::command]

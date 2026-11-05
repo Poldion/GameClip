@@ -20,3 +20,5 @@ pub mod service;
 pub mod share;
 #[cfg(windows)]
 pub mod thumbnail;
+#[cfg(windows)]
+pub mod update;

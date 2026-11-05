@@ -33,16 +33,28 @@ der Grafikkarte (NVENC, AMF, Quick Sync), die Spiele bleiben unberührt.
 * Windows 11 ab Build 26100 (24H2)
 * eine Grafikkarte mit Hardware-Encoder für H.264 (sonst kodiert GameClip über die CPU)
 
-## Installation (Testpaket)
+## Installation
 
-Bis zur signierten Veröffentlichung wird das Paket selbst gebaut und mit einem
-Testzertifikat signiert (die Signatur braucht einmal eine UAC-Bestätigung):
+Bis zur Signatur über SignPath sind die
+[Releases](https://github.com/Poldion/GameClip/releases) Vorabversionen mit einem
+Testzertifikat. Alle Dateien eines Releases in einen Ordner laden, dann `Install-GameClip.ps1`
+mit Rechtsklick → „Mit PowerShell ausführen“ starten. Beim ersten Mal fragt Windows nach
+Administratorrechten, um `GameClip-Release.cer` unter „Vertrauenswürdige Personen“ einzutragen;
+danach installiert das Skript das Paket. Neue Versionen gibt es über Einstellungen →
+„Nach Updates suchen“. GameClip geht nur bei diesem Klick ins Internet.
+
+### Selbst bauen
+
+Das Paket lässt sich auch selbst bauen und mit einem eigenen Testzertifikat signieren (die
+Signatur braucht einmal eine UAC-Bestätigung):
 
 ```powershell
 pwsh packaging/ffmpeg/fetch-ffmpeg.ps1
 pwsh packaging/build-msix.ps1 -TestCert
 Add-AppxPackage packaging/out/GameClip_0.1.0.0_x64.msix
 ```
+
+Ein Release entsteht durch einen Tag `vX.Y.Z` (Workflow `release.yml`).
 
 Danach „GameClip“ im Startmenü öffnen. Die Oberfläche startet den Dienst und führt durch den
 ersten Start (Mikrofon, Hotkey, Ordner, Test-Clip). Clips landen in `Videos\GameClip`, Exporte in

@@ -8,6 +8,7 @@ import type { ListDevicesReply } from "../generated/ListDevicesReply";
 import type { Settings as SettingsT } from "../generated/Settings";
 import { ForecastLabel } from "../components/ForecastLabel";
 import { HotkeyPicker } from "../components/HotkeyPicker";
+import { UpdateSection } from "../components/UpdateSection";
 import { VolumeSlider } from "../components/VolumeSlider";
 import { duration } from "../format";
 import { hotkeyLabel } from "../hotkey";
@@ -313,6 +314,8 @@ export function Settings() {
         </label>
         {autostart && <p className={css.hint}>{AUTOSTART_TEXT[autostart]}</p>}
       </fieldset>
+
+      <UpdateSection className={css.section} hintClass={css.hint} />
 
       <fieldset className={css.section}>
         <h2>Diagnose</h2>

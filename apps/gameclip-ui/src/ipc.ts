@@ -41,6 +41,16 @@ export type Connection =
 /** Autostart-Zustand; ohne Verbindung zum Dienst „unavailable“. */
 export type Autostart = AutostartState;
 
+/** Ergebnis von „Nach Updates suchen“ (Tauri-Befehl `check_update`). */
+export type UpdateCheck = {
+  /** Installierte Version; `null` ohne Paket (Entwicklung). */
+  current: string | null;
+  latest: string | null;
+  newer: boolean;
+  page_url: string | null;
+  size_bytes: number | null;
+};
+
 export class IpcError extends Error {
   constructor(
     public code: ErrorCode | "Disconnected",
@@ -95,6 +105,10 @@ export interface Ipc {
   startDrag(clipId: number): Promise<void>;
   /** Teilen-Dialog von Windows mit der Datei. */
   share(clipId: number): Promise<void>;
+  /** Fragt GitHub nach einer neueren Version (nur auf Klick). */
+  checkUpdate(): Promise<UpdateCheck>;
+  /** Lädt die neueste Version und öffnet den App Installer von Windows. */
+  installUpdate(): Promise<void>;
   onEvent(cb: (ev: ServiceEvent) => void): Unsubscribe;
   onConnection(cb: (c: Connection) => void): Unsubscribe;
   connection(): Promise<Connection>;
@@ -111,7 +125,7 @@ export function makeIpc(
   send: (cmd: Command) => Promise<Response>,
   native: Pick<
     Ipc,
-    "copyFile" | "reveal" | "pickFolder" | "hasMediaFoundation" | "thumbnailUrl" | "clipUrl" | "startDrag" | "share" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
+    "copyFile" | "reveal" | "pickFolder" | "hasMediaFoundation" | "thumbnailUrl" | "clipUrl" | "startDrag" | "share" | "checkUpdate" | "installUpdate" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
   >,
 ): Ipc {
   async function call<T>(cmd: Command): Promise<T> {
@@ -194,6 +208,8 @@ async function tauriIpc(): Promise<Ipc> {
     clipUrl: (clipId) => `http://clip.localhost/${clipId}`,
     startDrag: (clipId) => invoke("start_drag", { clipId }),
     share: (clipId) => invoke("share", { clipId }),
+    checkUpdate: () => invoke("check_update"),
+    installUpdate: () => invoke("install_update"),
     onEvent: (cb) => sub<ServiceEvent>("service-event", cb),
     onConnection: (cb) => sub<Connection>("connection", cb),
     connection: () => invoke("connection"),

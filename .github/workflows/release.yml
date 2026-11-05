@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Release bei Tag v* (Design, Datei 8): unsigniert packen, über SignPath signieren lassen und
-# veröffentlichen. Die Signatur (Q14) ist noch offen; bis dahin endet der Workflow mit dem
-# unsignierten Paket als Artefakt, wenn die Repository-Variable SIGNPATH_PROJECT fehlt.
+# Release bei Tag v* (Design, Datei 8): packen, signieren und veröffentlichen.
+#
+# Signatur, in dieser Reihenfolge:
+#   1. SignPath (Q14), wenn die Repository-Variable SIGNPATH_PROJECT gesetzt ist.
+#   2. Sonst das Testzertifikat aus den Secrets TEST_CERT_PFX (Base64) und TEST_CERT_PASSWORD.
+#      Das Release ist dann eine Vorabversion; es enthält GameClip-Release.cer und
+#      Install-GameClip.ps1, das das Zertifikat einmal (UAC) importiert und das Paket installiert.
+#   3. Ohne beides endet der Workflow mit dem unsignierten Paket als Artefakt.
 name: Release
 
 on:
@@ -13,6 +18,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      HAS_TEST_CERT: ${{ secrets.TEST_CERT_PFX != '' }}
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
@@ -50,13 +57,55 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: packaging/out/signed
 
+      - name: Signieren (Testzertifikat)
+        if: ${{ vars.SIGNPATH_PROJECT == '' && env.HAS_TEST_CERT == 'true' }}
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.TEST_CERT_PFX }}
+          PFX_PASSWORD: ${{ secrets.TEST_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'test.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+              Sort-Object FullName | Select-Object -Last 1
+          New-Item -ItemType Directory -Force packaging/out/signed | Out-Null
+          try {
+              Get-ChildItem packaging/out/*.msix | ForEach-Object {
+                  & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:PFX_PASSWORD $_.FullName
+                  if ($LASTEXITCODE -ne 0) { throw "SignTool fehlgeschlagen ($LASTEXITCODE)" }
+                  Copy-Item $_ packaging/out/signed/
+              }
+          } finally { Remove-Item $pfx -Force }
+          # Das Zertifikat muss zum Schlüssel im Secret passen, sonst nützt der Import nichts.
+          $sig = Get-AuthenticodeSignature (Get-ChildItem packaging/out/signed/*.msix | Select-Object -First 1)
+          $cer = New-Object Security.Cryptography.X509Certificates.X509Certificate2 'packaging/GameClip-Release.cer'
+          if ($sig.SignerCertificate.Thumbprint -ne $cer.Thumbprint) {
+              throw "packaging/GameClip-Release.cer passt nicht zu TEST_CERT_PFX"
+          }
+          Copy-Item packaging/GameClip-Release.cer, packaging/Install-GameClip.ps1 packaging/out/signed/
+
       - name: Prüfsummen und Release
-        if: ${{ vars.SIGNPATH_PROJECT != '' }}
+        if: ${{ vars.SIGNPATH_PROJECT != '' || env.HAS_TEST_CERT == 'true' }}
         shell: pwsh
         run: |
-          Get-ChildItem packaging/out/signed/*.msix | ForEach-Object {
+          Get-ChildItem packaging/out/signed/* | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name
           } | Set-Content packaging/out/signed/SHA256SUMS.txt
-          gh release create '${{ github.ref_name }}' packaging/out/signed/* --notes "FFmpeg-Quelle: siehe packaging/ffmpeg/ffmpeg.lock"
+          $notes = "FFmpeg-Quelle: siehe packaging/ffmpeg/ffmpeg.lock"
+          $flags = @()
+          if ('${{ vars.SIGNPATH_PROJECT }}' -eq '') {
+            $flags += '--prerelease'
+            $notes = @"
+          Mit einem Testzertifikat signiert. Installation: alle Dateien in einen Ordner laden,
+          dann ``Install-GameClip.ps1`` mit Rechtsklick → „Mit PowerShell ausführen“ starten.
+          Beim ersten Mal fragt Windows nach Administratorrechten, um GameClip-Release.cer als
+          vertrauenswürdig einzutragen. Danach aktualisiert GameClip sich über
+          Einstellungen → „Nach Updates suchen“.
+
+          $notes
+          "@
+          }
+          $files = (Get-ChildItem packaging/out/signed/*).FullName
+          gh release create '${{ github.ref_name }}' @files --title '${{ github.ref_name }}' --notes $notes @flags
         env:
           GH_TOKEN: ${{ github.token }}

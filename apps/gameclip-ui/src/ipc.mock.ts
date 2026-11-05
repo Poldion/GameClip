@@ -10,7 +10,7 @@ import type { Response } from "./generated/Response";
 import type { ServiceEvent } from "./generated/ServiceEvent";
 import type { ServiceStatus } from "./generated/ServiceStatus";
 import type { Settings } from "./generated/Settings";
-import { type Autostart, type Connection, type Ipc, makeIpc } from "./ipc";
+import { type Autostart, type Connection, type Ipc, makeIpc, type UpdateCheck } from "./ipc";
 import { hotkeyError } from "./hotkey";
 
 export function defaultSettings(): Settings {
@@ -69,6 +69,9 @@ export interface MockState {
   connection: Connection;
   /** Clips, für die der Teilen-Dialog geöffnet wurde. */
   shared: number[];
+  /** Antwort auf „Nach Updates suchen“ oder ein Fehler. */
+  update: UpdateCheck | Error;
+  updateInstalled: boolean;
 }
 
 export function mockState(): MockState {
@@ -96,6 +99,14 @@ export function mockState(): MockState {
     mediaFoundation: true,
     connection: { state: "connected", service_version: "0.1.0" },
     shared: [],
+    update: {
+      current: "0.1.0.6",
+      latest: "0.2.0.0",
+      newer: true,
+      page_url: "https://github.com/Poldion/GameClip/releases/tag/v0.2.0",
+      size_bytes: 31_000_000,
+    },
+    updateInstalled: false,
   };
 }
 
@@ -280,6 +291,13 @@ export function createMockIpc(state: MockState = mockState()): Ipc & { state: Mo
     startDrag: async () => {},
     share: async (clipId) => {
       state.shared.push(clipId);
+    },
+    checkUpdate: async () => {
+      if (state.update instanceof Error) throw state.update;
+      return state.update;
+    },
+    installUpdate: async () => {
+      state.updateInstalled = true;
     },
     onEvent: (cb) => {
       listeners.add(cb);

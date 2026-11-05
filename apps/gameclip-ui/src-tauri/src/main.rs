@@ -118,6 +118,8 @@ fn main() {
             commands::has_media_foundation,
             commands::start_drag,
             commands::share,
+            commands::check_update,
+            commands::install_update,
             initial_view,
         ])
         .setup(move |app| {

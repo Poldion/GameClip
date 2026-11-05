@@ -970,6 +970,10 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
         7.  Abdeckung: `cargo llvm-cov --workspace --fail-under-lines 85`; `cargo llvm-cov -p gameclip-core --fail-under-lines 90 --lcov --output-path core.lcov`; `pwsh packaging/check-coverage.ps1 core.lcov retention.rs export_plan.rs 100` prüft die beiden Dateien einzeln.
     *   **Grenz-Prüfung:** `cargo tree -p gameclip-core -p gameclip-protocol -e normal --target x86_64-pc-windows-msvc --prefix none --format "{p}"` wird ausgeführt; der Schritt scheitert, wenn der Befehl selbst scheitert oder eine Zeile auf `^windows(-sys)? ` passt. Dasselbe mit `-p gameclip-ui --depth 1` für die direkten Abhängigkeiten der Tauri-App.
     *   **Job `linux`:** `cargo test -p gameclip-core -p gameclip-protocol`, dann `npm ci && npm test && npm run typecheck` in `apps/gameclip-ui`.
+*   **Umgesetzt 2026-11 (M0, ohne Oberfläche):**
+    *   **Tests:** Die GitHub-Runner haben weder GPU noch Audiogeräte noch einen Desktop. Die CI baut deshalb alle Tests (`--no-run`) und führt nur die ohne Hardware aus (core, protocol, testsupport; media `audio_codec`/`encode_mux`; capture `ring`; gameclipd `index`/`retention_exec`/`jobs`/`save`). GPU-, WGC- und WASAPI-Tests laufen lokal bzw. später auf einem eigenen Runner.
+    *   **Grenz-Prüfung:** nutzt `-e normal,no-proc-macro`, weil `ts-rs-macros → termcolor → windows-sys` als Prozedur-Makro nur beim Kompilieren läuft und kein Code von core/protocol ist.
+    *   **Nicht enthalten:** npm-Schritte (ab M3) und Abdeckung (`llvm-cov`, folgt).
 *   **Begründung:** Tauri prüft `frontendDist` beim Kompilieren, deshalb das Frontend vor jedem Cargo-Schritt. Die generierten Typen werden eingecheckt; `git status --porcelain` findet auch neu hinzugekommene Dateien. `packaging/check-coverage.ps1` (neu, liest die lcov-Datei) erzwingt die Grenzen je Datei, weil `--fail-under-lines` nur die Summe prüft.
 
 ##### 8. `.github/workflows/release.yml` (Create)

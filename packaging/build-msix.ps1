@@ -44,6 +44,7 @@ foreach ($dll in 'avcodec-62.dll', 'avformat-62.dll', 'avutil-60.dll', 'swresamp
 }
 Copy-Item (Join-Path $repo 'packaging/assets/*.png') (Join-Path $layout 'assets')
 Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $layout 'licenses/GameClip-LICENSE.txt')
+Copy-Item (Join-Path $repo 'THIRD_PARTY_LICENSES.md') (Join-Path $layout 'licenses/THIRD_PARTY_LICENSES.md')
 Copy-Item (Join-Path $repo 'third_party/ffmpeg/LICENSE.txt') (Join-Path $layout 'licenses/FFmpeg-LICENSE.txt')
 $lock = Get-Content (Join-Path $repo 'packaging/ffmpeg/ffmpeg.lock') | Where-Object { $_ -match '^(version|source) =' }
 Set-Content (Join-Path $layout 'licenses/FFmpeg-SOURCE.txt') (@(

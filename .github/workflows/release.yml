@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Release bei Tag v* (Design, Datei 8): unsigniert packen, über SignPath signieren lassen und
+# veröffentlichen. Die Signatur (Q14) ist noch offen; bis dahin endet der Workflow mit dem
+# unsignierten Paket als Artefakt, wenn die Repository-Variable SIGNPATH_PROJECT fehlt.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - name: FFmpeg laden und Bindings erzeugen
+        shell: pwsh
+        run: |
+          $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
+          pwsh packaging/ffmpeg/fetch-ffmpeg.ps1
+      - name: Paket bauen
+        shell: pwsh
+        run: |
+          $v = '${{ github.ref_name }}'.TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Tag $v ist keine Version x.y.z" }
+          pwsh packaging/build-msix.ps1 -NoSign -Version "$v.0"
+      - uses: actions/upload-artifact@v4
+        id: unsigned
+        with:
+          name: msix-unsigned
+          path: packaging/out/*.msix
+
+      - name: Signieren (SignPath)
+        if: ${{ vars.SIGNPATH_PROJECT != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: packaging/out/signed
+
+      - name: Prüfsummen und Release
+        if: ${{ vars.SIGNPATH_PROJECT != '' }}
+        shell: pwsh
+        run: |
+          Get-ChildItem packaging/out/signed/*.msix | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content packaging/out/signed/SHA256SUMS.txt
+          gh release create '${{ github.ref_name }}' packaging/out/signed/* --notes "FFmpeg-Quelle: siehe packaging/ffmpeg/ffmpeg.lock"
+        env:
+          GH_TOKEN: ${{ github.token }}

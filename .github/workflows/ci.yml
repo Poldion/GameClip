@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CI (Design, Datei 7). Die Runner haben keine GPU, keine Audiogeräte und keinen echten Desktop:
+# Tests mit Hardware (Encoder auf der GPU, WGC, WASAPI, D3D11VA, Worker) laufen nur lokal bzw.
+# später auf einem eigenen Runner. Hier wird alles gebaut und jeder Test ohne Hardware ausgeführt.
+# Ab M3 kommen die Schritte der Oberfläche (npm) dazu.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust-Toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      - name: FFmpeg laden und Bindings erzeugen
+        shell: pwsh
+        run: |
+          $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
+          pwsh packaging/ffmpeg/fetch-ffmpeg.ps1
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Bauen (alle Tests ohne Ausführen)
+        run: cargo test --workspace --all-features --no-run
+
+      - name: Tests ohne Hardware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Run { cargo test @args; if ($LASTEXITCODE -ne 0) { throw "cargo test $args" } }
+          Run -p gameclip-core -p gameclip-protocol -p gameclip-testsupport
+          Run -p gameclip-media --lib --test audio_codec --test encode_mux
+          Run -p gameclip-capture-win --lib --test ring
+          Run -p gameclipd --all-features --lib --test index --test retention_exec --test jobs --test save
+
+      - name: Erzeugte TypeScript-Typen sind aktuell
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain apps/gameclip-ui/src/generated
+          if ($changes) { $changes; throw 'ts-rs-Typen veraltet: cargo test -p gameclip-protocol ausführen und einchecken' }
+
+      # Prozedur-Makros (ts-rs-macros → termcolor → windows-sys) laufen nur beim Kompilieren und
+      # sind kein Code der Crates; deshalb no-proc-macro.
+      - name: Plattformgrenze (kein windows in core/protocol)
+        shell: pwsh
+        run: |
+          $deps = cargo tree -p gameclip-core -p gameclip-protocol -e normal,no-proc-macro --target x86_64-pc-windows-msvc --prefix none --format "{p}"
+          if ($LASTEXITCODE -ne 0) { throw 'cargo tree fehlgeschlagen' }
+          $bad = $deps | Where-Object { $_ -match '^windows(-sys)? ' }
+          if ($bad) { $bad; throw 'gameclip-core/gameclip-protocol hängen von windows ab' }
+
+      - name: Lizenzen
+        shell: pwsh
+        run: |
+          cargo install cargo-deny --locked --version 0.20.2
+          cargo deny check licenses
+
+      - name: Release-Build und MSIX (unsigniert)
+        shell: pwsh
+        run: pwsh packaging/build-msix.ps1 -NoSign
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msix-unsigned
+          path: packaging/out/*.msix
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain (rust-toolchain.toml)
+        run: rustup show
+      - name: Core und Protocol
+        run: cargo test -p gameclip-core -p gameclip-protocol

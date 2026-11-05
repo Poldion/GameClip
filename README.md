@@ -37,11 +37,15 @@ der Grafikkarte (NVENC, AMF, Quick Sync), die Spiele bleiben unberührt.
 
 Bis zur Signatur über SignPath sind die
 [Releases](https://github.com/Poldion/GameClip/releases) Vorabversionen mit einem
-Testzertifikat. Alle Dateien eines Releases in einen Ordner laden, dann `Install-GameClip.ps1`
-mit Rechtsklick → „Mit PowerShell ausführen“ starten. Beim ersten Mal fragt Windows nach
-Administratorrechten, um `GameClip-Release.cer` unter „Vertrauenswürdige Personen“ einzutragen;
-danach installiert das Skript das Paket. Neue Versionen gibt es über Einstellungen →
-„Nach Updates suchen“. GameClip geht nur bei diesem Klick ins Internet.
+Testzertifikat. Am einfachsten: `GameClip-Setup.exe` aus dem neuesten Release laden und starten.
+Windows SmartScreen warnt dabei vor einem unbekannten Herausgeber („Weitere Informationen“ →
+„Trotzdem ausführen“). Beim ersten Mal fragt Windows nach Administratorrechten, um
+`GameClip-Release.cer` unter „Vertrauenswürdige Personen“ einzutragen; danach installiert das
+Setup das Paket für den angemeldeten Benutzer. Ohne Setup geht es auch mit den übrigen Dateien
+und `Install-GameClip.ps1` (Rechtsklick → „Mit PowerShell ausführen“).
+
+Neue Versionen gibt es über Einstellungen → „Nach Updates suchen“. GameClip geht nur bei diesem
+Klick ins Internet.
 
 ### Selbst bauen
 

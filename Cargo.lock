@@ -1323,6 +1323,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameclip-setup"
+version = "0.1.0"
+dependencies = [
+ "windows 0.62.2",
+ "windows-collections",
+ "windows-core 0.62.2",
+ "windows-future",
+]
+
+[[package]]
 name = "gameclip-testsupport"
 version = "0.1.0"
 dependencies = [

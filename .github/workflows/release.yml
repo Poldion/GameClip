@@ -84,6 +84,17 @@ jobs:
           }
           Copy-Item packaging/GameClip-Release.cer, packaging/Install-GameClip.ps1 packaging/out/signed/
 
+      # Eine Datei statt drei: bettet das signierte Paket und das Zertifikat ein.
+      - name: GameClip-Setup.exe bauen
+        if: ${{ vars.SIGNPATH_PROJECT == '' && env.HAS_TEST_CERT == 'true' }}
+        shell: pwsh
+        run: |
+          $env:GAMECLIP_SETUP_MSIX = (Get-ChildItem packaging/out/signed/GameClip_*_x64.msix | Select-Object -First 1).FullName
+          $env:GAMECLIP_SETUP_CER = (Resolve-Path packaging/GameClip-Release.cer).Path
+          cargo build --release -p gameclip-setup
+          if ($LASTEXITCODE -ne 0) { throw "Setup-Build fehlgeschlagen" }
+          Copy-Item target/release/GameClip-Setup.exe packaging/out/signed/
+
       - name: Prüfsummen und Release
         if: ${{ vars.SIGNPATH_PROJECT != '' || env.HAS_TEST_CERT == 'true' }}
         shell: pwsh
@@ -96,11 +107,14 @@ jobs:
           if ('${{ vars.SIGNPATH_PROJECT }}' -eq '') {
             $flags += '--prerelease'
             $notes = @"
-          Mit einem Testzertifikat signiert. Installation: alle Dateien in einen Ordner laden,
-          dann ``Install-GameClip.ps1`` mit Rechtsklick → „Mit PowerShell ausführen“ starten.
-          Beim ersten Mal fragt Windows nach Administratorrechten, um GameClip-Release.cer als
-          vertrauenswürdig einzutragen. Danach aktualisiert GameClip sich über
-          Einstellungen → „Nach Updates suchen“.
+          Mit einem Testzertifikat signiert. Installation: ``GameClip-Setup.exe`` laden und starten.
+          Windows SmartScreen warnt, weil die Datei nicht von einem bekannten Herausgeber stammt:
+          „Weitere Informationen“ → „Trotzdem ausführen“. Beim ersten Mal fragt Windows nach
+          Administratorrechten, um das Zertifikat von GameClip als vertrauenswürdig einzutragen.
+          Danach aktualisiert GameClip sich über Einstellungen → „Nach Updates suchen“.
+
+          Ohne Setup: alle übrigen Dateien in einen Ordner laden und ``Install-GameClip.ps1`` mit
+          Rechtsklick → „Mit PowerShell ausführen“ starten.
 
           $notes
           "@

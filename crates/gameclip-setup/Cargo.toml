@@ -1,0 +1,28 @@
+[package]
+name = "gameclip-setup"
+description = "GameClip-Setup.exe: trägt das Release-Zertifikat ein und installiert das eingebettete MSIX"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "GameClip-Setup"
+path = "src/main.rs"
+
+[dependencies]
+windows = { workspace = true, features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Management_Deployment",
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-collections = "0.3"
+windows-core.workspace = true
+windows-future.workspace = true

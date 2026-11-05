@@ -28,6 +28,18 @@ pub fn clip_file_name(program: Option<&str>, local_time: OffsetDateTime) -> Stri
     format!("{}_{stamp}.mp4", sanitize_program(program))
 }
 
+/// Unterordner für die Clips eines Programms im Clip- und Export-Ordner:
+/// `VALORANT-Win64-Shipping.exe` → `VALORANT`. `None`, wenn kein Programm bekannt ist; der Clip
+/// liegt dann direkt im Ordner.
+pub fn game_folder(program: Option<&str>) -> Option<String> {
+    let name = sanitize_program(program);
+    if name == "Clip" {
+        return None;
+    }
+    let folder = sanitize_program(Some(&program_label(&name)));
+    (folder != "Clip").then_some(folder)
+}
+
 /// Name einer Export-Datei aus dem Dateistamm des Originals.
 pub fn export_file_name(original_stem: &str, suffix: ExportSuffix) -> String {
     let tail = match suffix {

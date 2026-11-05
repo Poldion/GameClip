@@ -295,3 +295,16 @@ fn write_tiny_mp4(path: &Path) {
     )
     .unwrap();
 }
+
+#[test]
+fn exports_land_in_the_game_folder_of_the_clip() {
+    let e = env(Duration::from_secs(5));
+    let c = clip(&e, "cs2_2026-11-05_21-14-03.mp4");
+    e.jobs.start(c, 0, 1_000_000, ExportProfile::Mix);
+    let (_, done) = finish(&e);
+    let JobEvent::Completed { path, .. } = done else {
+        panic!("{done:?}")
+    };
+    assert_eq!(path.parent().unwrap(), e.paths.exports.join("cs2"));
+    assert!(path.ends_with("cs2_2026-11-05_21-14-03_trim.mp4"));
+}

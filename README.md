@@ -62,7 +62,8 @@ Ein Release entsteht durch einen Tag `vX.Y.Z` (Workflow `release.yml`).
 
 Danach „GameClip“ im Startmenü öffnen. Die Oberfläche startet den Dienst und führt durch den
 ersten Start (Mikrofon, Hotkey, Ordner, Test-Clip). Clips landen in `Videos\GameClip`, Exporte in
-`Videos\GameClip Export`. Das Tray-Menü bietet „Clip speichern“, „Letzten Clip kopieren“,
+`Videos\GameClip Export`, jeweils in einem Unterordner pro Spiel (etwa `Videos\GameClip\VALORANT`).
+Das Tray-Menü bietet „Clip speichern“, „Letzten Clip kopieren“,
 „Letzten Clip unter 10 MB kopieren“, Pause, „Galerie öffnen“, „Einstellungen“ und Beenden.
 
 ## Bauen

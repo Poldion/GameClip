@@ -166,6 +166,11 @@ fn saves_mp4_with_mix_and_m4a_with_single_tracks() {
     let saved = save_clip(&inputs(&e, &e.ring), &request()).unwrap();
     println!("{saved:?}");
     assert!(saved.path.ends_with(saved.path.file_name().unwrap()));
+    assert_eq!(
+        saved.path.parent().unwrap(),
+        e.paths.clips.join("TestGame"),
+        "Clip liegt im Spiele-Ordner"
+    );
     assert!(
         saved
             .path

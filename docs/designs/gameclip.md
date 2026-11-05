@@ -270,7 +270,7 @@ gameclipd (immer aktiv, kein WebView)
 3.  Schnappschuss: vom letzten Keyframe vor `Tastendruck − Pufferlänge` bis zum Tastendruck, nur aus dem neuesten Abschnitt. Ist der Puffer noch nicht voll, wird gespeichert, was da ist. Ist der Clip wegen eines Abschnittswechsels kürzer, sagt die Benachrichtigung „Clip verkürzt (Aufnahme neu gestartet um hh:mm:ss)“. Der Brief sah hier mehrere Dateien vor; eine Datei ist einfacher und reicht.
 4.  Der Clip wird mit Status `pending` in den Index eingetragen, bevor eine Datei sichtbar wird. So hält kein Abgleich den eigenen Clip für fremd.
 5.  Es werden zwei Dateien geschrieben, jeweils zuerst als `.part`, dann nach dem Schreiben erneut geöffnet und mit `FlushFileBuffers` gesichert, dann umbenannt:
-    *   `<Clip-Ordner>\<Programm>_JJJJ-MM-TT_HH-MM-SS.mp4` mit Video und der Spur „Mischung“. Das moov-Atom kommt ans Ende, damit die Datei in einem Durchgang geschrieben wird. Die Datei trägt die Metadaten-Tags `gameclip_id`, `gameclip_created` und `gameclip_version` (FFmpeg-Option `movflags +use_metadata_tags`, sonst schreibt der MP4-Muxer eigene Schlüssel nicht).
+    *   `<Clip-Ordner>\<Spiel>\<Programm>_JJJJ-MM-TT_HH-MM-SS.mp4` mit Video und der Spur „Mischung“. Das moov-Atom kommt ans Ende, damit die Datei in einem Durchgang geschrieben wird. Die Datei trägt die Metadaten-Tags `gameclip_id`, `gameclip_created` und `gameclip_version` (FFmpeg-Option `movflags +use_metadata_tags`, sonst schreibt der MP4-Muxer eigene Schlüssel nicht).
     *   `%LOCALAPPDATA%\GameClip\tracks\<UUID>.m4a` mit den Einzelspuren „System“, „Mikrofon“ und gegebenenfalls „Discord“, Spurtitel als `handler_name`, ebenfalls mit `gameclip_id`.
     *   Schlägt nur die `.m4a` fehl, bleibt die MP4 gültig; der Clip hat dann keine Einzelspuren, und die Benachrichtigung sagt das. Schlägt die MP4 fehl, wird auch die `.m4a` verworfen.
 6.  **Gemeinsamer Nullpunkt:** Beide Dateien nutzen t0 = PTS des ersten Keyframes. Audio vor t0 wird verworfen, die AAC-Anlaufverzögerung wird in beiden Dateien als Edit-List geschrieben. Damit liegen MP4 und `.m4a` ohne gespeicherten Versatz übereinander.
@@ -280,7 +280,7 @@ gameclipd (immer aktiv, kein WebView)
 
 ### Speicherlimit und Löschen
 
-*   Je Ordner (Clip-Ordner, Export-Ordner) gilt ein Limit, Standard 10 GB. Gezählt werden nur Dateien direkt im Ordner, nicht in Unterordnern.
+*   Je Ordner (Clip-Ordner, Export-Ordner) gilt ein Limit, Standard 10 GB. Gezählt werden Dateien direkt im Ordner und in den Spiele-Ordnern eine Ebene darunter, nicht tiefer.
 *   **Eigene Datei:** Eine Datei gilt nur dann als GameClip-eigen, wenn sie im Index mit Status `ok` steht **und** ihr Metadaten-Tag `gameclip_id` mit dem Index übereinstimmt. Vor dem Löschen wird der Tag erneut gelesen. Fremde Dateien zählen weder zum Limit noch werden sie gelöscht.
 *   **Nach jedem neuen Clip:** Liegt die Summe aller eigenen Dateien über dem Limit, werden die ältesten Clips ohne Stern endgültig gelöscht (`DeleteFileW`, kein Papierkorb), bis die Summe passt. Der gerade geschriebene Clip wird nie gelöscht.
 *   Zu jedem gelöschten Clip im Clip-Ordner wird auch seine `.m4a` gelöscht.
@@ -1063,6 +1063,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 *   **Änderungen:**
     *   `fn clip_file_name(program: Option<&str>, local_time: OffsetDateTime) -> String` → `<Programm>_JJJJ-MM-TT_HH-MM-SS.mp4`. Der Programmteil: Endung `.exe` entfernt, Zeichen `< > : " / \ | ? *` und Steuerzeichen werden zu `_`, Punkte und Leerzeichen am Ende entfernt, höchstens 64 Zeichen, reservierte Namen (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) bekommen `_` angehängt; leer oder `None` → `Clip`.
+    *   `fn game_folder(program: Option<&str>) -> Option<String>` *(2026-11-05, Wunsch des Nutzers)*: Spiele-Ordner im Clip- und Export-Ordner, derselbe Programmteil ohne Unreal-Endungen (`VALORANT-Win64-Shipping.exe` → `VALORANT`). `None` bei unbekanntem Programm; der Clip liegt dann direkt im Ordner. Exporte landen im Spiele-Ordner, den `program_from_file_name` aus dem Namen des Originals ergibt. Bestehende Clips werden nicht verschoben. Ist ein Spiele-Ordner nach dem Löschen (Nutzer oder Speicherlimit) leer, wird er entfernt.
     *   `fn export_file_name(original_stem, profile) -> String`: `_trim`, `_tracks` oder `_<MB>MB` mit `MB = ceil(target_bytes / 1 000 000)`.
     *   `fn dedupe(name, exists: impl Fn(&str) -> bool) -> String` hängt `_2`, `_3` … vor der Endung an.
 
@@ -1341,7 +1342,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `index.rs`: `rusqlite` im WAL-Modus, ein Schreib-Thread; `insert_pending`, `mark_ok`, `remove`, `set_star`, `list(folder)`, `get(row_id)`, `adopt(row_id)`, `reconcile(folder_path, folder)`. Ist `schema_version` > 1: nur lesend, Löschen ausgesetzt. Lässt sich die Datei nicht öffnen: umbenennen nach `index.sqlite.broken`, neu anlegen, `reconcile`.
     *   `reconcile(folder_path, folder)`:
         1.  **Bestehende Zeilen** (alle, auch aus früheren Ordnern): für jede Zeile außer `pending` wird `Path::exists(path)` geprüft. Fehlt die Datei, steigt `missing_count`; bei 2 werden Zeile und (bei `ok`) ihre `.m4a` entfernt. Ist sie da, wird `missing_count = 0` gesetzt. Clips in früheren Ordnern bleiben so erhalten, solange ihre Datei existiert.
-        2.  **Neue Dateien** nur in `folder_path` (nicht rekursiv), `.part` übersprungen. Vor jedem Lesen wird über `FileProbe::is_placeholder(path)` das Platzhalter-Attribut geprüft; Platzhalter werden ohne Tag-Lesen mit `placeholder = 1` geführt. Sonst Tag lesen (`demux::read_tags`):
+        2.  **Neue Dateien** in `folder_path` und in dessen direkten Unterordnern (Spiele-Ordner, nicht tiefer), `.part` übersprungen. Vor jedem Lesen wird über `FileProbe::is_placeholder(path)` das Platzhalter-Attribut geprüft; Platzhalter werden ohne Tag-Lesen mit `placeholder = 1` geführt. Sonst Tag lesen (`demux::read_tags`):
             *   Pfad ist schon bekannt → Größe aktualisieren.
             *   `tag_id` bekannt, aber die `ok`-Zeile hat einen anderen Pfad, der nicht mehr existiert → Umbenennen: Pfad der `ok`-Zeile aktualisieren.
             *   `tag_id` bekannt und die `ok`-Zeile existiert weiter → Kopie: neue Zeile `foreign`.
@@ -1352,7 +1353,7 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 ##### 46. `crates/gameclipd/src/watcher.rs` (Create)
 
-*   **Änderungen:** Läuft nur zwischen `WatchFolders{on: true}` und `{on: false}` bzw. dem Trennen der Oberfläche. `ReadDirectoryChangesW` auf beide Ordner (nicht rekursiv); jede Meldung startet einen 1-s-Entprell-Timer, danach `index.reconcile`. `ERROR_NOTIFY_ENUM_DIR` (Überlauf) löst ebenfalls einen Abgleich aus. Keine eigene Logik über Dateien.
+*   **Änderungen:** Läuft nur zwischen `WatchFolders{on: true}` und `{on: false}` bzw. dem Trennen der Oberfläche. `ReadDirectoryChangesW` auf beide Ordner mit Unterordnern (wegen der Spiele-Ordner); jede Meldung startet einen 1-s-Entprell-Timer, danach `index.reconcile`. `ERROR_NOTIFY_ENUM_DIR` (Überlauf) löst ebenfalls einen Abgleich aus. Keine eigene Logik über Dateien.
 
 ##### 47. `crates/gameclipd/src/retention_exec.rs` (Create)
 

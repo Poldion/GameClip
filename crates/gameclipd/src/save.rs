@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use gameclip_capture_win::Track;
 use gameclip_capture_win::ring::{PacketRef, PacketSource};
-use gameclip_core::naming::{clip_file_name, dedupe};
+use gameclip_core::naming::{clip_file_name, dedupe, game_folder};
 use gameclip_core::retention::FolderKind;
 use gameclip_core::state::SaveError;
 use gameclip_media::MediaError;
@@ -90,18 +90,25 @@ pub fn save_clip(inp: &SaveInputs<'_>, req: &SaveRequest) -> Result<Saved, SaveE
     }
     let t0 = snap.t0_us;
 
-    // 4: Dateiname im Clip-Ordner.
+    // 4: Dateiname im Clip-Ordner, je Spiel in einem eigenen Unterordner.
     if !inp.paths.clips.is_dir() {
+        return Err(SaveError::FolderMissing);
+    }
+    let dir = match game_folder(req.program.as_deref()) {
+        Some(game) => inp.paths.clips.join(game),
+        None => inp.paths.clips.clone(),
+    };
+    if std::fs::create_dir_all(&dir).is_err() {
         return Err(SaveError::FolderMissing);
     }
     let name = dedupe(
         &clip_file_name(req.program.as_deref(), req.now_local),
         |n| {
-            let p = inp.paths.clips.join(n);
+            let p = dir.join(n);
             p.exists() || part_path(&p).exists()
         },
     );
-    let final_path = inp.paths.clips.join(&name);
+    let final_path = dir.join(&name);
     let tag_id = uuid::Uuid::new_v4().to_string();
 
     // 5: Index-Eintrag, bevor eine Datei sichtbar wird.

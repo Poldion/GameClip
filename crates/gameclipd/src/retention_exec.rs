@@ -2,7 +2,7 @@
 //! Abgleich des Index mit den Ordnern und Speicherlimit (Design, Dateien 45 und 47).
 //!
 //! **Abgleich** (`reconcile`): bekannte Zeilen auf Existenz prüfen (zweimal fehlend → Zeile und
-//! ihre `.m4a` weg), neue `.mp4` im Ordner einordnen: Platzhalter ohne Lesen, sonst Tag lesen –
+//! ihre `.m4a` weg), neue `.mp4` im Ordner und in den Spiele-Ordnern direkt darunter einordnen: Platzhalter ohne Lesen, sonst Tag lesen –
 //! bekannter Pfad, umbenannt, Kopie (`foreign`) oder unbekannter GameClip-Clip (übernommen mit
 //! Stern). Dateien ohne `gameclip_id` werden als `foreign` mit leerem Tag geführt.
 //!
@@ -85,11 +85,24 @@ pub fn reconcile(
         }
     }
 
-    // 2. Neue Dateien nur in diesem Ordner, nicht rekursiv.
+    // 2. Neue Dateien in diesem Ordner und in den Spiele-Ordnern direkt darunter.
     let Ok(entries) = std::fs::read_dir(folder_path) else {
         return Ok(stats);
     };
+    let mut files = Vec::new();
     for entry in entries.flatten() {
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            if let Ok(sub) = std::fs::read_dir(entry.path()) {
+                files.extend(
+                    sub.flatten()
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_file())),
+                );
+            }
+        } else {
+            files.push(entry);
+        }
+    }
+    for entry in files {
         let path = entry.path();
         if path
             .extension()
@@ -249,7 +262,7 @@ pub fn enforce(
                 starred: r.starred,
                 status: r.status,
                 placeholder: r.placeholder,
-                in_current_folder: r.path.parent() == Some(folder_dir(paths, r.folder)),
+                in_current_folder: crate::paths::in_folder(&r.path, folder_dir(paths, r.folder)),
             })
             .collect();
         let plan = plan_deletions(&infos, limit, protect);
@@ -274,6 +287,7 @@ pub fn enforce(
                 warn!("Löschen fehlgeschlagen: {}: {e}", row.path.display());
                 continue;
             }
+            crate::paths::remove_empty_game_folder(&row.path, folder_dir(paths, row.folder));
             if row.folder == FolderKind::Clips {
                 let _ = std::fs::remove_file(paths.track_file(&row.tag_id));
             }

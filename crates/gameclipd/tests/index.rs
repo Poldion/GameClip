@@ -160,3 +160,24 @@ fn broken_database_is_replaced() {
     assert!(broken.exists());
     assert!(index.list(FolderKind::Clips).unwrap().is_empty());
 }
+
+#[test]
+fn reconcile_reads_game_folders_one_level_deep() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = paths(dir.path());
+    let index = Index::open(&p.index).unwrap();
+    let probe = FakeProbe::default();
+    let game = p.clips.join("VALORANT");
+    std::fs::create_dir_all(game.join("tiefer")).unwrap();
+    tagged_mp4(&game.join("a.mp4"), "tag-a", 0);
+    tagged_mp4(&game.join("tiefer").join("b.mp4"), "tag-b", 0);
+
+    let stats = reconcile(&index, &p, &p.clips, FolderKind::Clips, &probe).unwrap();
+    assert_eq!(
+        stats.adopted.len(),
+        1,
+        "nur der Spiele-Ordner, nicht tiefer"
+    );
+    let row = index.get(stats.adopted[0]).unwrap().unwrap();
+    assert_eq!(row.path, game.join("a.mp4"));
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Ordnerüberwachung, solange die Galerie offen ist (Design, Datei 46).
 //!
-//! `ReadDirectoryChangesW` je Ordner (nicht rekursiv) auf einem eigenen Thread. Jede Meldung, auch
+//! `ReadDirectoryChangesW` je Ordner (mit Unterordnern, wegen der Spiele-Ordner) auf einem eigenen Thread. Jede Meldung, auch
 //! `ERROR_NOTIFY_ENUM_DIR` (Überlauf), geht als `FolderKind` an die Hauptschleife; die entprellt
 //! (1 s) und gleicht ab. Keine eigene Logik über Dateien.
 
@@ -14,9 +14,9 @@ use crossbeam_channel::Sender;
 use gameclip_core::retention::FolderKind;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY, FILE_NOTIFY_CHANGE_FILE_NAME,
-    FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING, ReadDirectoryChangesW,
+    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY, FILE_NOTIFY_CHANGE_DIR_NAME,
+    FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadDirectoryChangesW,
 };
 use windows::Win32::System::IO::CancelSynchronousIo;
 use windows_core::HSTRING;
@@ -85,8 +85,9 @@ fn watch(dir: &Path, folder: FolderKind, tx: &Sender<FolderKind>, stop: &AtomicB
                 handle,
                 buf.as_mut_ptr().cast(),
                 buf.len() as u32,
-                false,
+                true,
                 FILE_NOTIFY_CHANGE_FILE_NAME
+                    | FILE_NOTIFY_CHANGE_DIR_NAME
                     | FILE_NOTIFY_CHANGE_SIZE
                     | FILE_NOTIFY_CHANGE_LAST_WRITE,
                 Some(&mut returned),

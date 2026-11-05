@@ -92,6 +92,21 @@ fn hotkeys() {
 }
 
 #[test]
+fn game_folders() {
+    use gameclip_core::naming::game_folder as g;
+    assert_eq!(
+        g(Some("VALORANT-Win64-Shipping.exe")).as_deref(),
+        Some("VALORANT")
+    );
+    assert_eq!(g(Some("cs2.exe")).as_deref(), Some("cs2"));
+    assert_eq!(g(Some("a:b.exe")).as_deref(), Some("a_b"));
+    assert_eq!(g(Some("con.exe")).as_deref(), Some("con_"));
+    assert_eq!(g(Some("Game .exe")).as_deref(), Some("Game"));
+    assert_eq!(g(None), None);
+    assert_eq!(g(Some("")), None);
+}
+
+#[test]
 fn program_from_file_name_reads_the_prefix() {
     use gameclip_core::naming::program_from_file_name as p;
     assert_eq!(

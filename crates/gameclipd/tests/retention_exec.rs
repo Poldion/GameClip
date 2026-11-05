@@ -154,3 +154,42 @@ fn shared_folder_forms_one_group_with_the_smaller_limit() {
         "eine Gruppe, kleineres Limit, älteste zuerst"
     );
 }
+
+#[test]
+fn deleting_the_last_clip_of_a_game_removes_its_empty_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = paths(dir.path());
+    let index = Index::open(&p.index).unwrap();
+    let game = p.clips.join("cs2");
+    std::fs::create_dir_all(&game).unwrap();
+    let clips = three_clips(&index, &p, FolderKind::Clips, &game);
+    let one = size(&clips[2].1) + 10;
+    let done = enforce(
+        &index,
+        &p,
+        &limit(one),
+        Some(clips[2].0),
+        &FakeProbe::default(),
+    )
+    .unwrap();
+    assert_eq!(done.deleted.len(), 2);
+    assert!(game.is_dir(), "noch ein Clip drin: Ordner bleibt");
+
+    gameclipd::paths::remove_empty_game_folder(&clips[2].1, &p.clips);
+    assert!(game.is_dir(), "remove_dir lässt volle Ordner stehen");
+    std::fs::remove_file(&clips[2].1).unwrap();
+    gameclipd::paths::remove_empty_game_folder(&clips[2].1, &p.clips);
+    assert!(!game.exists());
+    gameclipd::paths::remove_empty_game_folder(&p.clips.join("x.mp4"), &p.clips);
+    assert!(p.clips.is_dir(), "der Clip-Ordner selbst bleibt");
+}
+
+#[test]
+fn clips_in_game_folders_count_as_current_folder() {
+    use gameclipd::paths::in_folder;
+    let root = Path::new(r"C:\Videos\GameClip");
+    assert!(in_folder(&root.join("a.mp4"), root));
+    assert!(in_folder(&root.join("cs2").join("a.mp4"), root));
+    assert!(!in_folder(&root.join("cs2").join("x").join("a.mp4"), root));
+    assert!(!in_folder(Path::new(r"C:\Andere\a.mp4"), root));
+}

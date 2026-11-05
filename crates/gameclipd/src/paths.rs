@@ -50,6 +50,25 @@ impl Paths {
     }
 }
 
+/// Liegt `path` in `dir` oder in einem Spiele-Ordner direkt darunter?
+pub fn in_folder(path: &Path, dir: &Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    parent == dir || parent.parent() == Some(dir)
+}
+
+/// Entfernt den Spiele-Ordner von `deleted`, wenn er nach dem Löschen leer ist. Der Clip- oder
+/// Export-Ordner selbst (`root`) bleibt immer stehen; volle Ordner lässt `remove_dir` stehen.
+pub fn remove_empty_game_folder(deleted: &Path, root: &Path) {
+    if let Some(parent) = deleted.parent()
+        && parent != root
+        && parent.parent() == Some(root)
+    {
+        let _ = std::fs::remove_dir(parent);
+    }
+}
+
 fn env_dir(name: &str) -> PathBuf {
     std::env::var_os(name)
         .map(PathBuf::from)

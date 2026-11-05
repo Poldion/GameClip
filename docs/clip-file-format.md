@@ -3,7 +3,7 @@
 Fester Vertrag für Clips, Begleitdateien und Exporte (D25). Andere Programme dürfen sich darauf
 verlassen; Änderungen brauchen eine neue `gameclip_version`-Regel.
 
-## Clip (`<Clip-Ordner>\<Programm>_JJJJ-MM-TT_HH-MM-SS.mp4`)
+## Clip (`<Clip-Ordner>\<Spiel>\<Programm>_JJJJ-MM-TT_HH-MM-SS.mp4`)
 
 * **Video:** H.264 High, geschlossene Bildgruppen, ein Keyframe je Sekunde, keine B-Frames.
   Spurtitel (`handler_name`) `Video`.

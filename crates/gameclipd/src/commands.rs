@@ -259,7 +259,7 @@ impl Service {
             has_tracks: row.has_tracks,
             status: row.status,
             placeholder: row.placeholder,
-            in_current_folder: row.path.parent() == Some(self.folder_dir(row.folder)),
+            in_current_folder: crate::paths::in_folder(&row.path, self.folder_dir(row.folder)),
             program: row
                 .path
                 .file_name()
@@ -299,6 +299,7 @@ impl Service {
         }
         if row.path.exists() {
             std::fs::remove_file(&row.path).map_err(internal)?;
+            crate::paths::remove_empty_game_folder(&row.path, self.folder_dir(row.folder));
         }
         if row.folder == FolderKind::Clips && row.status == ClipStatus::Ok && !row.tag_id.is_empty()
         {

@@ -19,7 +19,9 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use gameclip_core::export_plan::plan;
-use gameclip_core::naming::{ExportSuffix, dedupe, export_file_name};
+use gameclip_core::naming::{
+    ExportSuffix, dedupe, export_file_name, game_folder, program_from_file_name,
+};
 use gameclip_core::retention::FolderKind;
 use gameclip_protocol::error::ErrorCode;
 use gameclip_protocol::messages::{ExportProfile, JobInfo, JobState, ServiceEvent};
@@ -339,13 +341,21 @@ fn run_job(
         ExportProfile::SeparateTracks => ExportSuffix::Tracks,
         ExportProfile::TargetSize { bytes } => ExportSuffix::TargetSize { bytes },
     };
-    std::fs::create_dir_all(&req.paths.exports)
-        .map_err(|e| (ErrorCode::FolderMissing, e.to_string()))?;
+    // Exporte landen im Spiele-Ordner des Originals, erkannt am Dateinamen.
+    let game = source
+        .file_name()
+        .and_then(|n| program_from_file_name(&n.to_string_lossy()))
+        .and_then(|p| game_folder(Some(&p)));
+    let dir = match game {
+        Some(g) => req.paths.exports.join(g),
+        None => req.paths.exports.clone(),
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| (ErrorCode::FolderMissing, e.to_string()))?;
     let name = dedupe(&export_file_name(&stem, suffix), |n| {
-        let p = req.paths.exports.join(n);
+        let p = dir.join(n);
         p.exists() || part_path(&p).exists()
     });
-    let final_path = req.paths.exports.join(name);
+    let final_path = dir.join(name);
     let part = part_path(&final_path);
     let tag_id = uuid::Uuid::new_v4().to_string();
     let row_id = cfg

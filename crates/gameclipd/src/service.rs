@@ -48,7 +48,11 @@ pub fn run() -> i32 {
     let base = Paths::resolve(&Settings::default());
     let _ = std::fs::create_dir_all(&base.logs);
     let _log = crate::logging::init(&base.logs);
-    info!("gameclipd {} startet", env!("CARGO_PKG_VERSION"));
+    info!(
+        "gameclipd {} startet (AUMID {})",
+        env!("CARGO_PKG_VERSION"),
+        crate::toast::aumid()
+    );
 
     let settings = load_settings(&base.settings);
     let paths = Paths::resolve(&settings);

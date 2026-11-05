@@ -11,9 +11,36 @@ use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
 use windows_core::HSTRING;
 
-/// AUMID der Paket-App (Paketfamilie!Anwendung). Im Paket gesetzt, sonst die App-ID.
-fn aumid() -> String {
-    std::env::var("GAMECLIP_AUMID").unwrap_or_else(|_| format!("{APP_ID}!Service"))
+/// AUMID der Paket-App: `<Paketfamilie>!Service`. Die Familie enthält den Hash des Publishers
+/// (z. B. `io.github.poldion.GameClip_r7hhd5js3fz4t`); mit dem bloßen Paketnamen verwirft
+/// Windows den Toast still (gemessen 2026-11). Ohne Paket gibt es keine gültige AUMID.
+pub fn aumid() -> String {
+    if let Ok(id) = std::env::var("GAMECLIP_AUMID") {
+        return id;
+    }
+    match package_family_name() {
+        Some(pfn) => format!("{pfn}!Service"),
+        None => format!("{APP_ID}!Service"),
+    }
+}
+
+fn package_family_name() -> Option<String> {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFamilyName;
+    let mut len = 0u32;
+    unsafe {
+        let _ = GetCurrentPackageFamilyName(&mut len, None);
+        if len == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; len as usize];
+        if GetCurrentPackageFamilyName(&mut len, Some(windows_core::PWSTR(buf.as_mut_ptr())))
+            != ERROR_SUCCESS
+        {
+            return None;
+        }
+        Some(String::from_utf16_lossy(&buf[..len.saturating_sub(1) as usize]))
+    }
 }
 
 fn escape(s: &str) -> String {

@@ -1362,7 +1362,15 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
 
 *   **Änderungen:** Wiedergabe über WASAPI mit `sound.volume`; Beginn und Dauer an den Mixer, wenn die Stummschaltung des eigenen Tons aktiv ist. Die WAV-Dateien sind selbst erstellt und stehen unter CC0-1.0.
     *   **Umgesetzt 2026-11:** Statt WAV-Dateien erzeugt `sound.rs` die Töne im Code: Erfolg 880 → 1320 Hz, Fehler 440 → 311 Hz, mit 8 ms Ein- und Ausklingen. So gibt es keine Binärdateien und keine Lizenzfrage. `play` liefert Beginn und Dauer (+100 ms Reserve) für `mute_system`. In M0 schließt „System“ den eigenen Prozessbaum aus, die Stummschaltung wird erst mit dem Discord-Ausschluss (M2) gebraucht.
-    *   **Toasts (Datei 52):** über `GAMECLIP_AUMID` bzw. `<APP_ID>!Service`. Ohne Paket meldete `Show` 2026-11 keinen Fehler; ob der Toast erscheint, prüft S1 im MSIX.
+    *   **Toasts (Datei 52):** über `GAMECLIP_AUMID` bzw. `<Paketfamilie>!Service` (`GetCurrentPackageFamilyName`). **Befund 2026-11:** Mit dem bloßen Paketnamen (`io.github.poldion.GameClip!Service`) nimmt Windows den Toast ohne Fehler an und verwirft ihn still. Die AUMID braucht die Paketfamilie mit Publisher-Hash.
+*   **Erster Lauf im MSIX (2026-11, Testzertifikat, RX 6750 XT, Valorant unter Vanguard):**
+    *   Installation, Start über `shell:AppsFolder\<PFN>!Service` und Tray funktionieren.
+    *   **F8 löst in Valorant aus** (Teil von S8), der Bestätigungston kommt.
+    *   **Speicherdauer:** 60-s-Clips (57–104 MB) in 170–280 ms gespeichert (G2: ≤ 3 s).
+    *   **Export:** Tray-Aktion „unter 10 MB kopieren“ für 60 s in 14,4–16,5 s bei laufendem Spiel (S9 vorläufig ≤ 15 s: knapp), Einfügen in Discord klappt (S6).
+    *   **Toast:** erschien nicht; Ursache war die falsche AUMID (siehe oben).
+    *   **Dateien:** Schreibzugriffe auf `%LOCALAPPDATA%` (Logs, Index, Einzelspuren) leitet Windows im Paket nach `%LOCALAPPDATA%\Packages\<PFN>\LocalCache\Local\GameClip` um; Clips und Exporte im Videos-Ordner bleiben am echten Ort. Die Oberfläche muss im selben Paket laufen, um denselben Index zu sehen.
+    *   **Startzeit:** Der Start bis „Aufnahme läuft“ dauerte beim ersten Paketstart 4 s, beim zweiten 0,4 s.
     *   **Speicherlimit und Abgleich (Dateien 45, 47):** `retention_exec::{reconcile, enforce}` mit `FileProbe` (Windows: `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`). Der Abgleich läuft beim Start für beide Ordner, das Limit nach jedem Clip und Export. Dateien ohne `gameclip_id` werden als `foreign` mit leerem Tag geführt. `adopt` folgt mit der Galerie (M3). Alle Fälle aus Datei 55 sind getestet.
 
 ##### 51. `crates/gameclipd/src/tray.rs` (Create)

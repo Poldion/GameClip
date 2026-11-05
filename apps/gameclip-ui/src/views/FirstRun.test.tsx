@@ -13,14 +13,14 @@ describe("FirstRun", () => {
     expect(await screen.findByRole("heading", { name: "Mikrofon" })).toBeTruthy();
     expect(screen.getByText(/dauerhaft im Hintergrund aufgenommen/)).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: "Mikrofon aufnehmen" })).toHaveProperty("checked", true);
-    expect(calls).toContainEqual({ type: "SubscribeMicLevel", body: { on: true } });
+    await waitFor(() => expect(calls).toContainEqual({ type: "SubscribeMicLevel", body: { on: true } }));
     fireEvent.change(screen.getByRole("combobox", { name: "Mikrofon" }), { target: { value: "{mic-2}" } });
     await waitFor(() => expect(ipc.state.settings.audio.mic_device).toBe("{mic-2}"));
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
     // Hotkey: Testdruck mit der Standardtaste.
     expect(await screen.findByRole("heading", { name: "Hotkey" })).toBeTruthy();
-    expect(calls).toContainEqual({ type: "SubscribeMicLevel", body: { on: false } });
+    await waitFor(() => expect(calls).toContainEqual({ type: "SubscribeMicLevel", body: { on: false } }));
     fireEvent.keyDown(screen.getByTestId("hotkey-capture"), { code: "F8", key: "F8" });
     expect(await screen.findByText("F8 ist frei.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));

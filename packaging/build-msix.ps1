@@ -72,7 +72,21 @@ if (-not $cert) {
 }
 $cer = Join-Path $out 'GameClip-Test.cer'
 Export-Certificate -Cert $cert -FilePath $cer | Out-Null
-Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+$trusted = Get-ChildItem Cert:\LocalMachine\TrustedPeople |
+    Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+if (-not $trusted) {
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).
+        IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($admin) {
+        Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+    } else {
+        # Nur dieser Schritt braucht Administratorrechte: Windows fragt per UAC nach.
+        Write-Host 'Zertifikat wird nach LocalMachine\TrustedPeople importiert (UAC-Abfrage) …'
+        $cmd = "Import-Certificate -FilePath '$cer' -CertStoreLocation Cert:\LocalMachine\TrustedPeople"
+        $p = Start-Process pwsh -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile', '-Command', $cmd
+        if ($p.ExitCode -ne 0) { throw "Import des Zertifikats abgelehnt oder fehlgeschlagen ($($p.ExitCode))" }
+    }
+}
 & (Join-Path $bin 'signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint $msix
 if ($LASTEXITCODE -ne 0) { throw "SignTool fehlgeschlagen ($LASTEXITCODE)" }
 Write-Host "Signiertes Paket: $msix"

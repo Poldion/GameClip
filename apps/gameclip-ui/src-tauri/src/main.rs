@@ -115,10 +115,9 @@ fn main() {
             commands::copy_file,
             commands::reveal,
             commands::pick_folder,
-            commands::get_autostart,
-            commands::set_autostart,
             commands::has_media_foundation,
             commands::start_drag,
+            commands::share,
             initial_view,
         ])
         .setup(move |app| {

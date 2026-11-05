@@ -209,6 +209,7 @@ fn every_example_in_protocol_md_parses() {
                 "TestRegisterReply" => {
                     check(serde_json::from_value::<TestRegisterReply>(body).map(drop))
                 }
+                "AutostartReply" => check(serde_json::from_value::<AutostartReply>(body).map(drop)),
                 other => panic!("unbekannter Antworttyp {other}"),
             }
         } else {

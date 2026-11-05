@@ -5,4 +5,8 @@ export type ClipEntry = { clip_id: number, tag_id: string, path: string, size_by
 /**
  * RFC 3339, UTC.
  */
-created_at: string, duration_us: number, starred: boolean, has_tracks: boolean, status: ClipStatus, placeholder: boolean, in_current_folder: boolean, };
+created_at: string, duration_us: number, starred: boolean, has_tracks: boolean, status: ClipStatus, placeholder: boolean, in_current_folder: boolean, 
+/**
+ * Spiel bzw. Programm aus dem Dateinamen (`VALORANT`), `None` bei „Clip_…“ oder fremden Namen.
+ */
+program: string | null, };

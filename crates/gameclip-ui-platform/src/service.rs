@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Dienst starten und Autostart schalten (Design, Datei 58).
+//! Dienst starten (Design, Datei 58). Den Autostart schaltet der Dienst selbst
+//! (`GetAutostart`/`SetAutostart`), weil nur die App „Service“ ihre `StartupTask` sieht.
 //!
 //! Im Paket startet die Oberfläche den Dienst über seine AUMID (`<PFN>!Service`), damit er im
 //! Paketkontext läuft (Fähigkeiten, umgeleitetes `LOCALAPPDATA`). Ohne Paket (Entwicklung) startet
-//! sie `gameclipd.exe` neben der eigenen Exe. Autostart gibt es nur im Paket (`StartupTask`).
+//! sie `gameclipd.exe` neben der eigenen Exe.
 
-use gameclip_core::ids::STARTUP_TASK_ID;
-use windows::ApplicationModel::{StartupTask, StartupTaskState};
 use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
 };
@@ -43,61 +42,5 @@ pub fn start() -> windows::core::Result<()> {
                     windows::core::Error::new(windows::Win32::Foundation::E_FAIL, e.to_string())
                 })
         }
-    }
-}
-
-/// Zustand des Autostarts, wie die Einstellungen ihn zeigen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Autostart {
-    Enabled,
-    Disabled,
-    /// Vom Benutzer im Task-Manager abgeschaltet; nur dort wieder einschaltbar.
-    DisabledByUser,
-    /// Durch Richtlinie gesperrt.
-    DisabledByPolicy,
-    /// Kein Paket (Entwicklung).
-    Unavailable,
-}
-
-fn task() -> windows::core::Result<StartupTask> {
-    StartupTask::GetAsync(&HSTRING::from(STARTUP_TASK_ID))?.join()
-}
-
-fn map(state: StartupTaskState) -> Autostart {
-    match state {
-        StartupTaskState::Enabled | StartupTaskState::EnabledByPolicy => Autostart::Enabled,
-        StartupTaskState::DisabledByUser => Autostart::DisabledByUser,
-        StartupTaskState::DisabledByPolicy => Autostart::DisabledByPolicy,
-        _ => Autostart::Disabled,
-    }
-}
-
-pub fn autostart() -> Autostart {
-    if package::family_name().is_none() {
-        return Autostart::Unavailable;
-    }
-    task()
-        .and_then(|t| t.State())
-        .map(map)
-        .unwrap_or(Autostart::Unavailable)
-}
-
-/// Schaltet den Autostart. Einschalten fragt Windows; ist er vom Benutzer abgeschaltet, bleibt er
-/// aus und das Ergebnis sagt das.
-pub fn set_autostart(on: bool) -> Autostart {
-    if package::family_name().is_none() {
-        return Autostart::Unavailable;
-    }
-    let Ok(task) = task() else {
-        return Autostart::Unavailable;
-    };
-    if on {
-        task.RequestEnableAsync()
-            .and_then(|op| op.join())
-            .map(map)
-            .unwrap_or(Autostart::Unavailable)
-    } else {
-        let _ = task.Disable();
-        task.State().map(map).unwrap_or(Autostart::Unavailable)
     }
 }

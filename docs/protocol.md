@@ -109,6 +109,12 @@ gibt es keine Aushandlung: Ist `protocol` ungleich der Version des Dienstes, ant
 | `CancelJob` | `{ job_id }` | `{}` |
 | `ListJobs` | – | `{ jobs: [{ job_id, clip_id, profile, state, percent }] }` |
 | `CopyDiagnostics` | – | `{ text }` (Benutzerordner durch `<USER>` ersetzt) |
+| `GetAutostart` | – | `{ state }`: `enabled`, `disabled`, `disabled_by_user`, `disabled_by_policy`, `unavailable` |
+| `SetAutostart` | `{ on }` | `{ state }` (nach dem Schalten; `disabled_by_user` bleibt aus) |
+
+Den Autostart schaltet der Dienst, weil `StartupTask` nur die Aufgaben der aufrufenden App
+findet und die Aufgabe an der App „Service“ hängt. `ClipEntry.program` ist das Spiel aus dem
+Dateinamen (`VALORANT-Win64-Shipping_…` → `VALORANT`), `null` bei „Clip_…“ und fremden Namen.
 
 `SuspendHotkey`, `SubscribeMicLevel` und `WatchFolders` gelten je Verbindung. Trennt sich eine
 Verbindung, nimmt der Dienst ihre Anforderungen zurück.
@@ -138,7 +144,7 @@ Eine ungültige Einstellung wird abgelehnt; `details` nennt jedes Feld mit Grund
 ```
 
 ```json ListClipsReply
-{"id": 6, "ok": true, "body": {"clips": [{"clip_id": 12, "tag_id": "01JC4V7Q1S6M8B2X3Y4Z5A6B7C", "path": "C:\\Users\\<USER>\\Videos\\GameClip\\Clips\\Valorant 2026-11-05 21-14-03.mp4", "size_bytes": 48211002, "created_at": "2026-11-05T20:14:03Z", "duration_us": 60000000, "starred": false, "has_tracks": true, "status": "ok", "placeholder": false, "in_current_folder": true}], "used_bytes": 48211002, "limit_bytes": 21474836480}}
+{"id": 6, "ok": true, "body": {"clips": [{"clip_id": 12, "tag_id": "01JC4V7Q1S6M8B2X3Y4Z5A6B7C", "path": "C:\\Users\\<USER>\\Videos\\GameClip\\Clips\\VALORANT-Win64-Shipping_2026-11-05_21-14-03.mp4", "size_bytes": 48211002, "created_at": "2026-11-05T20:14:03Z", "duration_us": 60000000, "starred": false, "has_tracks": true, "status": "ok", "placeholder": false, "in_current_folder": true, "program": "VALORANT"}], "used_bytes": 48211002, "limit_bytes": 21474836480}}
 ```
 
 ```json
@@ -147,6 +153,14 @@ Eine ungültige Einstellung wird abgelehnt; `details` nennt jedes Feld mit Grund
 
 ```json StartExportJobReply
 {"id": 7, "ok": true, "body": {"job_id": 3}}
+```
+
+```json
+{"id": 8, "type": "SetAutostart", "body": {"on": true}}
+```
+
+```json AutostartReply
+{"id": 8, "ok": true, "body": {"state": "enabled"}}
 ```
 
 ```json ListJobsReply

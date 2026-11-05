@@ -90,3 +90,25 @@ fn hotkeys() {
         Err(KeyError::Unknown(_))
     ));
 }
+
+#[test]
+fn program_from_file_name_reads_the_prefix() {
+    use gameclip_core::naming::program_from_file_name as p;
+    assert_eq!(
+        p("VALORANT-Win64-Shipping_2026-11-05_21-14-03.mp4").as_deref(),
+        Some("VALORANT")
+    );
+    assert_eq!(p("cs2_2026-11-05_21-14-03_2.mp4").as_deref(), Some("cs2"));
+    assert_eq!(
+        p("Rocket League_2026-11-05_21-14-03_10MB.mp4").as_deref(),
+        Some("Rocket League")
+    );
+    assert_eq!(
+        p("a_b_2026-11-05_21-14-03_trim.mp4").as_deref(),
+        Some("a_b")
+    );
+    assert_eq!(p("Clip_2026-11-05_21-14-03.mp4"), None);
+    assert_eq!(p("Urlaub.mp4"), None);
+    assert_eq!(p("_2026-11-05_21-14-03.mp4"), None);
+    assert_eq!(p(""), None);
+}

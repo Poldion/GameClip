@@ -39,6 +39,7 @@ function clip(id: number, over: Partial<ClipEntry> = {}): ClipEntry {
     status: "ok",
     placeholder: false,
     in_current_folder: true,
+    program: "Valorant",
     ...over,
   };
 }
@@ -47,8 +48,8 @@ function clip(id: number, over: Partial<ClipEntry> = {}): ClipEntry {
 export function sampleClips(): ClipEntry[] {
   return [
     clip(1, { starred: true }),
-    clip(2),
-    clip(3, { status: "foreign", path: "C:\\Users\\Spieler\\Videos\\GameClip\\Clips\\kopie.mp4" }),
+    clip(2, { program: "cs2", path: "C:\\Users\\Spieler\\Videos\\GameClip\\Clips\\cs2_2026-11-02_21-14-03.mp4" }),
+    clip(3, { status: "foreign", program: null, path: "C:\\Users\\Spieler\\Videos\\GameClip\\Clips\\kopie.mp4" }),
     clip(4, { in_current_folder: false, path: "D:\\Alt\\Clips\\Valorant_2026-10-01_20-00-00.mp4" }),
   ];
 }
@@ -66,6 +67,8 @@ export interface MockState {
   autostart: Autostart;
   mediaFoundation: boolean;
   connection: Connection;
+  /** Clips, für die der Teilen-Dialog geöffnet wurde. */
+  shared: number[];
 }
 
 export function mockState(): MockState {
@@ -92,6 +95,7 @@ export function mockState(): MockState {
     autostart: "enabled",
     mediaFoundation: true,
     connection: { state: "connected", service_version: "0.1.0" },
+    shared: [],
   };
 }
 
@@ -254,6 +258,11 @@ export function createMockIpc(state: MockState = mockState()): Ipc & { state: Mo
         return ok(id, { jobs: state.jobs });
       case "CopyDiagnostics":
         return ok(id, { text: "GameClip 0.1.0 – Diagnose\nWindows: 25H2 (Mock)\n" });
+      case "GetAutostart":
+        return ok(id, { state: state.autostart });
+      case "SetAutostart":
+        state.autostart = cmd.body.on ? "enabled" : "disabled";
+        return ok(id, { state: state.autostart });
       case "Hello":
         return err(id, "InvalidArgument", "Hello nur einmal");
     }
@@ -263,17 +272,15 @@ export function createMockIpc(state: MockState = mockState()): Ipc & { state: Mo
     copyFile: async () => {},
     reveal: async () => {},
     pickFolder: async () => "C:\\Users\\Spieler\\Videos\\Neu",
-    getAutostart: async () => state.autostart,
-    setAutostart: async (on) => {
-      state.autostart = on ? "enabled" : "disabled";
-      return state.autostart;
-    },
     hasMediaFoundation: async () => state.mediaFoundation,
     thumbnailUrl: () =>
       "data:image/svg+xml;utf8," +
       encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#3a3f4b"/></svg>'),
     clipUrl: () => "",
     startDrag: async () => {},
+    share: async (clipId) => {
+      state.shared.push(clipId);
+    },
     onEvent: (cb) => {
       listeners.add(cb);
       return () => listeners.delete(cb);

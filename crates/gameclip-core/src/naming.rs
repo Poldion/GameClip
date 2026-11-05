@@ -81,3 +81,51 @@ fn sanitize_program(program: Option<&str>) -> String {
     }
     name
 }
+
+/// Programm aus einem Dateinamen, den [`clip_file_name`] erzeugt hat, für die Gruppierung in der
+/// Galerie. Erkennt auch Exporte (`_trim`, `_tracks`, `_10MB`) und Zähler (`_2`). `None` für
+/// „Clip_…“ (kein Programm bekannt) und Namen ohne Zeitstempel.
+pub fn program_from_file_name(file_name: &str) -> Option<String> {
+    let stem = file_name.rsplit_once('.').map_or(file_name, |(s, _)| s);
+    // Zeitstempel `_JJJJ-MM-TT_HH-MM-SS` suchen; davor steht das Programm.
+    let bytes = stem.as_bytes();
+    const LEN: usize = "_2026-11-05_21-14-03".len();
+    let is_stamp = |i: usize| -> bool {
+        let s = &bytes[i..i + LEN];
+        s[0] == b'_'
+            && s[5] == b'-'
+            && s[8] == b'-'
+            && s[11] == b'_'
+            && s[14] == b'-'
+            && s[17] == b'-'
+            && [1, 2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19]
+                .iter()
+                .all(|&k| s[k].is_ascii_digit())
+    };
+    let start = (0..bytes.len().checked_sub(LEN)? + 1)
+        .rev()
+        .find(|&i| is_stamp(i))?;
+    let program = &stem[..start];
+    if program.is_empty() || program == "Clip" {
+        return None;
+    }
+    Some(program_label(program))
+}
+
+/// Lesbarer Name aus dem Exe-Namen: Unreal-Endungen wie `-Win64-Shipping` fallen weg.
+pub fn program_label(program: &str) -> String {
+    let mut name = program;
+    for suffix in [
+        "-Win64-Shipping",
+        "-WinGDK-Shipping",
+        "-Shipping",
+        "-Win64",
+        "_x64",
+        "_Data",
+    ] {
+        if let Some(s) = name.strip_suffix(suffix) {
+            name = s;
+        }
+    }
+    if name.is_empty() { program } else { name }.to_string()
+}

@@ -17,4 +17,6 @@ pub mod reveal;
 #[cfg(windows)]
 pub mod service;
 #[cfg(windows)]
+pub mod share;
+#[cfg(windows)]
 pub mod thumbnail;

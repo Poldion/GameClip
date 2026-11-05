@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Kachel in der Galerie: Vorschaubild, Name, Datum, Dauer, Größe, Stern, Markierung „Fremd“.
+// Kachel in der Galerie: Vorschaubild, Name, Datum, Dauer, Größe, Stern, Teilen, Markierung „Fremd“.
 
 import type { ClipEntry } from "../generated/ClipEntry";
 import { bytes, dateTime, duration, fileName } from "../format";
@@ -14,6 +14,8 @@ export function ClipCard(props: {
   onMenu: (x: number, y: number) => void;
   /** Ziehen startet ein Datei-Drag von Windows (nach Discord, in den Explorer). */
   onDrag?: () => void;
+  /** Teilen-Dialog von Windows. */
+  onShare?: () => void;
 }) {
   const c = props.clip;
   const foreign = c.status === "foreign";
@@ -68,6 +70,11 @@ export function ClipCard(props: {
             onClick={() => props.onStar(!c.starred)}
           >
             {c.starred ? "★" : "☆"}
+          </button>
+        )}
+        {props.onShare && c.status === "ok" && (
+          <button onClick={props.onShare} title="Über Windows teilen (Discord, Mail, Nearby Share …)">
+            Teilen
           </button>
         )}
         <button aria-label="Mehr" onClick={(e) => props.onMenu(e.clientX, e.clientY)}>

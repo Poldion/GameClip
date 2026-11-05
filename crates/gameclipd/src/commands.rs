@@ -14,9 +14,10 @@ use gameclip_core::settings::{FieldError, Settings, merge_into};
 use gameclip_core::state::{Restrictions, StateEvent};
 use gameclip_protocol::error::ErrorCode;
 use gameclip_protocol::messages::{
-    ClipEntry, Command, CopyDiagnosticsReply, Empty, GetCapabilitiesReply, GetExportEstimateReply,
-    GetFrameTimesReply, GetSettingsReply, ListClipsReply, ListDevicesReply, ListJobsReply, MicInfo,
-    MonitorInfo, ServiceStatus, SetSettingsReply, StartExportJobReply, TooSmall,
+    AutostartReply, ClipEntry, Command, CopyDiagnosticsReply, Empty, GetCapabilitiesReply,
+    GetExportEstimateReply, GetFrameTimesReply, GetSettingsReply, ListClipsReply, ListDevicesReply,
+    ListJobsReply, MicInfo, MonitorInfo, ServiceStatus, SetSettingsReply, StartExportJobReply,
+    TooSmall,
 };
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
@@ -184,6 +185,12 @@ impl Service {
                 jobs: self.jobs.list(),
             }),
             Command::CopyDiagnostics => self.copy_diagnostics(),
+            Command::GetAutostart => ok(&AutostartReply {
+                state: crate::autostart::state(),
+            }),
+            Command::SetAutostart { on } => ok(&AutostartReply {
+                state: crate::autostart::set(on),
+            }),
         }
     }
 
@@ -253,6 +260,11 @@ impl Service {
             status: row.status,
             placeholder: row.placeholder,
             in_current_folder: row.path.parent() == Some(self.folder_dir(row.folder)),
+            program: row
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(gameclip_core::naming::program_from_file_name),
         }
     }
 

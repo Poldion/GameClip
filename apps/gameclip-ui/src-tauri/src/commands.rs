@@ -6,8 +6,7 @@
 use std::path::PathBuf;
 
 use gameclip_protocol::messages::{ClipEntry, Command, Response};
-use gameclip_ui_platform::service::Autostart;
-use gameclip_ui_platform::{clipboard, media, reveal as reveal_mod, service};
+use gameclip_ui_platform::{clipboard, media, reveal as reveal_mod};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
@@ -80,26 +79,6 @@ pub async fn pick_folder(
     .await
 }
 
-fn autostart_name(a: Autostart) -> &'static str {
-    match a {
-        Autostart::Enabled => "enabled",
-        Autostart::Disabled => "disabled",
-        Autostart::DisabledByUser => "disabled_by_user",
-        Autostart::DisabledByPolicy => "disabled_by_policy",
-        Autostart::Unavailable => "unavailable",
-    }
-}
-
-#[tauri::command]
-pub async fn get_autostart() -> Result<&'static str, String> {
-    blocking(|| autostart_name(service::autostart())).await
-}
-
-#[tauri::command]
-pub async fn set_autostart(on: bool) -> Result<&'static str, String> {
-    blocking(move || autostart_name(service::set_autostart(on))).await
-}
-
 /// Bild am Mauszeiger, wenn die Shell kein Vorschaubild liefert.
 const DRAG_FALLBACK_PNG: &[u8] = include_bytes!("../icons/128x128.png");
 
@@ -126,6 +105,35 @@ pub async fn start_drag(
         }
     })
     .map_err(|e| e.to_string())
+}
+
+/// Teilen-Dialog von Windows mit der Clip-Datei (Design, Datei 64: „Teilen“ in der Galerie).
+#[tauri::command]
+pub async fn share(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    ipc: State<'_, Ipc>,
+    clip_id: u32,
+) -> Result<(), String> {
+    use gameclip_ui_platform::share;
+    let ipc = ipc.inner().clone();
+    let (file, title) = blocking(move || {
+        let path = clip_path(&ipc, clip_id)?;
+        let title = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Clip".into());
+        let file = share::open_file(&path).map_err(|e| e.to_string())?;
+        Ok::<_, String>((file, title))
+    })
+    .await??;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(share::show(&window, &file, title).map_err(|e| e.to_string()));
+    })
+    .map_err(|e| e.to_string())?;
+    blocking(move || rx.recv().map_err(|e| e.to_string())).await???;
+    Ok(())
 }
 
 #[tauri::command]

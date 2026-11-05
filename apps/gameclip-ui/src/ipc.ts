@@ -2,6 +2,8 @@
 // Typisierte Befehle an den Dienst (Design, Datei 62). Die Rust-Seite von Tauri hält die Pipe;
 // hier gibt es je Protokollbefehl eine Funktion. Alle Typen kommen aus src/generated (ts-rs).
 
+import type { AutostartReply } from "./generated/AutostartReply";
+import type { AutostartState } from "./generated/AutostartState";
 import type { ClipEntry } from "./generated/ClipEntry";
 import type { Command } from "./generated/Command";
 import type { CopyDiagnosticsReply } from "./generated/CopyDiagnosticsReply";
@@ -36,7 +38,8 @@ export type Connection =
   | { state: "service_unreachable" }
   | { state: "version_mismatch"; message: string };
 
-export type Autostart = "enabled" | "disabled" | "disabled_by_user" | "disabled_by_policy" | "unavailable";
+/** Autostart-Zustand; ohne Verbindung zum Dienst „unavailable“. */
+export type Autostart = AutostartState;
 
 export class IpcError extends Error {
   constructor(
@@ -77,12 +80,12 @@ export interface Ipc {
   cancelJob(jobId: number): Promise<void>;
   listJobs(): Promise<ListJobsReply>;
   copyDiagnostics(): Promise<CopyDiagnosticsReply>;
+  getAutostart(): Promise<Autostart>;
+  setAutostart(on: boolean): Promise<Autostart>;
   // Nur Oberfläche (gameclip-ui-platform):
   copyFile(clipId: number): Promise<void>;
   reveal(clipId: number): Promise<void>;
   pickFolder(current: string | null): Promise<string | null>;
-  getAutostart(): Promise<Autostart>;
-  setAutostart(on: boolean): Promise<Autostart>;
   hasMediaFoundation(): Promise<boolean>;
   /** URL des Vorschaubilds (eigenes Protokoll `clip`). */
   thumbnailUrl(clipId: number): string;
@@ -90,6 +93,8 @@ export interface Ipc {
   clipUrl(clipId: number): string;
   /** Datei aus der Galerie ziehen (Drag-and-drop nach Discord oder in den Explorer). */
   startDrag(clipId: number): Promise<void>;
+  /** Teilen-Dialog von Windows mit der Datei. */
+  share(clipId: number): Promise<void>;
   onEvent(cb: (ev: ServiceEvent) => void): Unsubscribe;
   onConnection(cb: (c: Connection) => void): Unsubscribe;
   connection(): Promise<Connection>;
@@ -106,7 +111,7 @@ export function makeIpc(
   send: (cmd: Command) => Promise<Response>,
   native: Pick<
     Ipc,
-    "copyFile" | "reveal" | "pickFolder" | "getAutostart" | "setAutostart" | "hasMediaFoundation" | "thumbnailUrl" | "clipUrl" | "startDrag" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
+    "copyFile" | "reveal" | "pickFolder" | "hasMediaFoundation" | "thumbnailUrl" | "clipUrl" | "startDrag" | "share" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
   >,
 ): Ipc {
   async function call<T>(cmd: Command): Promise<T> {
@@ -150,6 +155,17 @@ export function makeIpc(
     cancelJob: (job_id) => none({ type: "CancelJob", body: { job_id } }),
     listJobs: () => call({ type: "ListJobs" }),
     copyDiagnostics: () => call({ type: "CopyDiagnostics" }),
+    // Ohne Dienst kein Autostart: der Schalter bleibt gesperrt statt einen Fehler zu zeigen.
+    getAutostart: () =>
+      call<AutostartReply>({ type: "GetAutostart" }).then(
+        (r) => r.state,
+        () => "unavailable" as const,
+      ),
+    setAutostart: (on) =>
+      call<AutostartReply>({ type: "SetAutostart", body: { on } }).then(
+        (r) => r.state,
+        () => "unavailable" as const,
+      ),
     ...native,
   };
 }
@@ -173,12 +189,11 @@ async function tauriIpc(): Promise<Ipc> {
     copyFile: (clipId) => invoke("copy_file", { clipId }),
     reveal: (clipId) => invoke("reveal", { clipId }),
     pickFolder: (current) => invoke("pick_folder", { current }),
-    getAutostart: () => invoke("get_autostart"),
-    setAutostart: (on) => invoke("set_autostart", { on }),
     hasMediaFoundation: () => invoke("has_media_foundation"),
     thumbnailUrl: (clipId) => `http://clip.localhost/thumb/${clipId}`,
     clipUrl: (clipId) => `http://clip.localhost/${clipId}`,
     startDrag: (clipId) => invoke("start_drag", { clipId }),
+    share: (clipId) => invoke("share", { clipId }),
     onEvent: (cb) => sub<ServiceEvent>("service-event", cb),
     onConnection: (cb) => sub<Connection>("connection", cb),
     connection: () => invoke("connection"),

@@ -103,6 +103,12 @@ pub enum Command {
     },
     ListJobs,
     CopyDiagnostics,
+    /// Autostart des Dienstes (`StartupTask` der App „Service“). Nur der Dienst selbst sieht die
+    /// Aufgabe; die Oberfläche fragt deshalb über die Pipe.
+    GetAutostart,
+    SetAutostart {
+        on: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -263,6 +269,8 @@ pub struct ClipEntry {
     pub status: ClipStatus,
     pub placeholder: bool,
     pub in_current_folder: bool,
+    /// Spiel bzw. Programm aus dem Dateinamen (`VALORANT`), `None` bei „Clip_…“ oder fremden Namen.
+    pub program: Option<String>,
 }
 
 pub type GetClipReply = ClipEntry;
@@ -334,6 +342,25 @@ pub struct ListJobsReply {
 #[ts(export)]
 pub struct CopyDiagnosticsReply {
     pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum AutostartState {
+    Enabled,
+    Disabled,
+    /// Im Task-Manager abgeschaltet; nur dort wieder einschaltbar.
+    DisabledByUser,
+    DisabledByPolicy,
+    /// Kein Paket (Entwicklung) oder Aufgabe nicht gefunden.
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AutostartReply {
+    pub state: AutostartState,
 }
 
 /// Leere Antwort für Befehle ohne Rückgabewert.

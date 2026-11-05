@@ -40,7 +40,7 @@ describe("Gallery", () => {
 
   it("löscht erst nach Rückfrage", async () => {
     const { ipc } = await renderWithStore(<Gallery />);
-    const card = screen.getByRole("article", { name: /Valorant_2026-11-02/ });
+    const card = screen.getByRole("article", { name: /cs2_2026-11-02/ });
     fireEvent.click(within(card).getByRole("button", { name: "Mehr" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Löschen …" }));
     expect(ipc.state.clips.some((c) => c.clip_id === 2)).toBe(true);
@@ -50,8 +50,30 @@ describe("Gallery", () => {
 
   it("schützt mit dem Stern", async () => {
     const { ipc } = await renderWithStore(<Gallery />);
-    const card = screen.getByRole("article", { name: /Valorant_2026-11-02/ });
+    const card = screen.getByRole("article", { name: /cs2_2026-11-02/ });
     fireEvent.click(within(card).getByRole("button", { name: "Mit Stern schützen" }));
     await waitFor(() => expect(ipc.state.clips.find((c) => c.clip_id === 2)?.starred).toBe(true));
+  });
+
+  it("gruppiert nach Spiel, das neueste Spiel zuerst, ohne Spiel zuletzt", async () => {
+    await renderWithStore(<Gallery />);
+    const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    // Neuester Clip: Valorant (11-03 Fremd ist „Ohne Spiel“), dann cs2 (11-02).
+    expect(titles).toEqual(["Valorant 2 Clips", "cs2 1 Clip", "Ohne Spiel 1 Clip"]);
+    expect(within(screen.getByRole("region", { name: "cs2" })).getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("sortiert auf Wunsch nur nach Datum", async () => {
+    await renderWithStore(<Gallery />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Sortieren" }), { target: { value: "date" } });
+    expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+  });
+
+  it("öffnet den Teilen-Dialog", async () => {
+    const { ipc } = await renderWithStore(<Gallery />);
+    const card = screen.getByRole("article", { name: /cs2_2026-11-02/ });
+    fireEvent.click(within(card).getByRole("button", { name: "Teilen" }));
+    await waitFor(() => expect(ipc.state.shared).toEqual([2]));
   });
 });

@@ -4,6 +4,7 @@
 
 #![cfg(windows)]
 
+pub mod autostart;
 pub mod capture;
 pub mod cli;
 pub mod clipboard;

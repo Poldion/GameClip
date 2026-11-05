@@ -67,6 +67,17 @@ pub fn is_hardware(name: &str) -> bool {
     name != "libx264"
 }
 
+/// Bilder je Bildgruppe. Die Aufnahme braucht einen Keyframe je Sekunde (Ringpuffer, Schnitt an
+/// Bildgruppen). Exporte nehmen 5 s: Bei niedrigen Zielbitraten verbrauchen Keyframes sonst den
+/// Großteil der Bits (S11, 2026-11).
+pub fn gop_frames(fps: u32, profile: EncodeProfile) -> u32 {
+    let fps = fps.max(1);
+    match profile {
+        EncodeProfile::Capture => fps,
+        EncodeProfile::Export => fps * 5,
+    }
+}
+
 /// Encoder-spezifische Optionen (Design, Datei 27).
 fn private_options(name: &str, profile: EncodeProfile) -> Vec<(&'static str, &'static str)> {
     use EncodeProfile::*;
@@ -94,7 +105,7 @@ pub struct VideoEncoder {
     ctx: AVCodecContext,
     name: String,
     hardware: bool,
-    /// Bilder je Bildgruppe (= fps).
+    /// Bilder je Bildgruppe (`gop_frames`).
     gop: u32,
     /// Bilder seit dem letzten angeforderten IDR.
     since_key: u32,
@@ -126,7 +137,8 @@ impl VideoEncoder {
             num: cfg.fps as i32,
             den: 1,
         });
-        ctx.set_gop_size(cfg.fps as i32);
+        let gop = gop_frames(cfg.fps, cfg.profile);
+        ctx.set_gop_size(gop as i32);
         ctx.set_max_b_frames(0);
         ctx.set_bit_rate(cfg.bitrate_bps as i64);
         ctx.set_flags(ctx.flags | ffi::AV_CODEC_FLAG_CLOSED_GOP as i32);
@@ -154,9 +166,9 @@ impl VideoEncoder {
             ctx,
             name: name.into(),
             hardware,
-            gop: cfg.fps.max(1),
+            gop,
             // Das erste Bild wird damit immer ein IDR.
-            since_key: cfg.fps.max(1),
+            since_key: gop,
         })
     }
 
@@ -175,7 +187,7 @@ impl VideoEncoder {
 
     /// Sendet ein Bild mit Zeitstempel in µs. `keyframe` erzwingt ein IDR.
     ///
-    /// Spätestens nach `fps` Bildern wird ebenfalls ein IDR verlangt. `gop_size` allein reicht
+    /// Spätestens nach einer Bildgruppe wird ebenfalls ein IDR verlangt. `gop_size` allein reicht
     /// nicht: AMF mit `usage lowlatency`/`ultralowlatency` setzt dann nur den ersten Keyframe
     /// (gemessen auf RX 6750 XT, 2026-11); der Ringpuffer braucht aber einen je Sekunde.
     pub fn send(&mut self, frame: &mut AVFrame, pts_us: i64, keyframe: bool) -> Result<()> {

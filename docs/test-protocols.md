@@ -120,6 +120,38 @@ Dauer steht im Log („G1a: Tray-Aktion bis Zwischenablage … ms“) plus die Z
 | Xbox Game Bar | offen | offen |
 | OBS Replay Buffer | offen | offen |
 
-## S5, S7, S11, G1b
+## S5 – Player über das `clip`-Protokoll (M3)
 
-Ab M3 bzw. M4; Schritte und Kriterien siehe Design.
+**Kriterien:** Spulen in einem 5-min-Clip über `http://clip.localhost` ohne Fehler, auch bei
+offenen Bereichen (`bytes=0-`); N-Edition wird erkannt.
+
+**Schritte:** In den Einstellungen 300 s einstellen, 5 min laufen lassen, Clip speichern. In der
+Galerie doppelklicken, im Editor mehrmals weit springen (Leiste anklicken), mit ←/→ bildweise
+gehen, abspielen. Auf einer N-Edition (VM) muss der erste Start den Hinweis zum Media Feature
+Pack zeigen.
+
+| Datum | Ergebnis |
+| --- | --- |
+| 2026-11-05 | Automatisch: Range-Formen `bytes=a-b`, `bytes=a-`, `bytes=-n`, 206 mit höchstens 1 MiB und `Content-Range`, 200 ohne Range, 416 nur bei `a ≥ size` (Tests in `clip_protocol.rs`); Prüfung auf `mfplat.dll` (Test in `media.rs`). Spulen in WebView2 und N-Edition offen. |
+
+## S11 – Größen-Export (M3)
+
+**Kriterien:** 20 Größen-Exporte, jeder höchstens Zielgröße oder `TooLarge` wie von
+`export_plan` vorhergesagt.
+
+**Schritte:** `cargo test -p gameclip-worker --test trim -- --ignored s11 --nocapture` (Quelle:
+300 s synthetisches Bild 640×360 bei 30 fps mit wanderndem Rauschen, 1,5 Mbit/s; Ziele 10, 8,
+25, 4 und 1,5 MB im Wechsel).
+
+| Datum | Ergebnis |
+| --- | --- |
+| 2026-11-05 | **Bestanden** (RX 6750 XT, `h264_amf`, Bildgruppe 5 s): keine Datei über der Zielgröße. 10 Exporte erreichen 18–96 % des Ziels (ab 40 s 87–96 %). 4 enden ohne Kodieren mit `TooLarge`, wie `export_plan` vorhersagt (`TooSmall`). 6 enden nach dem Korrekturversuch mit `TooLarge`, obwohl der Plan sie für machbar hielt: 30 s/1,5 MB, 75 s/4 MB, 160 s/4 MB, 200 s/10 MB, 225 s/8 MB (geplant 85–290 kbit/s). AMF erreicht mit dem Rauschen bei 360p30 keine Videobitrate unter etwa 300 kbit/s. Mit 1-s-Bildgruppe waren es 7 solche Fälle und Ergebnisse bis 100 % des Ziels; 200 s dauerten 17,3 statt 16,5 s, 250 s 21,6 statt 10,6 s. |
+
+**Offen (Q):** `MIN_VIDEO_BPS` (50 kbit/s) liegt weit unter dem, was der Encoder bei schwer
+komprimierbarem Bild schafft. Echte Spielaufnahmen (1080p, auf 480p30 verkleinert) sind zu
+prüfen, bevor die Grenze angehoben wird; dann würden solche Fälle vorab als „zu klein“ gemeldet
+statt nach zwei Kodierläufen.
+
+## S7, G1b
+
+Ab M4 bzw. nach M3; Schritte und Kriterien siehe Design.

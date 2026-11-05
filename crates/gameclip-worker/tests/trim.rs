@@ -36,6 +36,11 @@ struct Source {
 
 /// 5-s-Clip wie vom Dienst: MP4 mit Video und Mischung, `.m4a` mit System und Mikrofon.
 fn source() -> Source {
+    source_with(FRAMES, 4_000_000)
+}
+
+/// Wie `source`, mit `frames` Bildern bei `bitrate_bps`.
+fn source_with(frames: u32, bitrate_bps: u64) -> Source {
     let dir = tempfile::tempdir().unwrap();
     let clip = dir.path().join("clip.mp4");
     let tracks = dir.path().join("tracks.m4a");
@@ -43,12 +48,12 @@ fn source() -> Source {
         width: W,
         height: H,
         fps: FPS as u32,
-        bitrate_bps: 4_000_000,
+        bitrate_bps,
         profile: EncodeProfile::Capture,
     };
     let mut venc = VideoEncoder::open("libx264", &cfg, None).unwrap();
     let mut vpk = Vec::new();
-    for i in 0..FRAMES {
+    for i in 0..frames {
         let mut f = nv12_frame(i, W, H);
         venc.send(&mut f, frame_us(i64::from(i)), false).unwrap();
         while let Some(p) = venc.receive().unwrap() {
@@ -62,7 +67,8 @@ fn source() -> Source {
     let audio = |freq: f32| {
         let mut enc = AudioEncoder::new(128_000).unwrap();
         let mut pk = Vec::new();
-        for start in (0..48_000 * 5).step_by(480) {
+        let samples = i64::from(frames) * 48_000 / FPS;
+        for start in (0..samples as usize).step_by(480) {
             pk.extend(enc.push(&sine(start, 480, freq)).unwrap());
         }
         pk.extend(enc.finish().unwrap());
@@ -335,4 +341,74 @@ fn binary_speaks_json_lines() {
             ..
         }
     ));
+}
+
+/// S11: 20 Größen-Exporte von 5 bis 300 s aus einer 300-s-Quelle mit bewegtem Rauschen. Jeder
+/// bleibt höchstens bei der Zielgröße oder endet mit `TooLarge`, wenn `export_plan` das vorhersagt.
+/// Dauert einige Minuten; Start: `cargo test -p gameclip-worker --test trim -- --ignored s11`.
+#[test]
+#[ignore]
+fn s11_twenty_target_size_exports() {
+    let src = source_with(300 * FPS as u32, 1_500_000);
+    let info = video_info(&src.clip).unwrap();
+    let seconds = [
+        5, 10, 15, 20, 30, 40, 50, 60, 75, 90, 105, 120, 140, 160, 180, 200, 225, 250, 275, 300,
+    ];
+    let targets = [10_000_000u64, 8_000_000, 25_000_000, 4_000_000, 1_500_000];
+    let mut rows = Vec::new();
+    for (i, s) in seconds.iter().enumerate() {
+        let target = targets[i % targets.len()];
+        let span = frame_us(FPS * s);
+        let out = src._dir.path().join(format!("s11_{s}.mp4.part"));
+        let predicted = plan(span as u64, target, (info.width, info.height, info.fps));
+        let started = std::time::Instant::now();
+        let result = run(
+            &job(
+                &src,
+                &out,
+                0,
+                span,
+                ExportProfile::TargetSize { bytes: target },
+            ),
+            &mut |_| {},
+        );
+        let secs = started.elapsed().as_secs_f64();
+        let line = match (&predicted, &result) {
+            (Err(_), Err(f)) => {
+                assert_eq!(f.0, WorkerError::TooLarge);
+                format!(
+                    "{s} s | {} MB | TooSmall vorhergesagt | TooLarge | {secs:.1} s",
+                    target / 1_000_000
+                )
+            }
+            (Ok(p), Ok(o)) => {
+                assert!(o.bytes <= target, "{s} s: {} > {target}", o.bytes);
+                format!(
+                    "{s} s | {} MB | {}p{} {} kbit/s | {:.2} MB ({:.0} %) | {secs:.1} s",
+                    target / 1_000_000,
+                    p.height,
+                    p.fps,
+                    p.video_bps / 1000,
+                    o.bytes as f64 / 1e6,
+                    o.bytes as f64 * 100.0 / target as f64
+                )
+            }
+            (Ok(_), Err(f)) => {
+                assert_eq!(
+                    f.0,
+                    WorkerError::TooLarge,
+                    "{s} s: nur TooLarge erlaubt: {f:?}"
+                );
+                format!(
+                    "{s} s | {} MB | Plan ok | TooLarge nach Korrektur | {secs:.1} s",
+                    target / 1_000_000
+                )
+            }
+            (Err(_), Ok(o)) => panic!("{s} s: Plan sagt TooSmall, Export ergab {o:?}"),
+        };
+        println!("{line}");
+        rows.push(line);
+        let _ = std::fs::remove_file(&out);
+    }
+    assert_eq!(rows.len(), 20);
 }

@@ -12,6 +12,8 @@ export function ClipCard(props: {
   onAdopt: () => void;
   onOpen: () => void;
   onMenu: (x: number, y: number) => void;
+  /** Ziehen startet ein Datei-Drag von Windows (nach Discord, in den Explorer). */
+  onDrag?: () => void;
 }) {
   const c = props.clip;
   const foreign = c.status === "foreign";
@@ -25,6 +27,12 @@ export function ClipCard(props: {
         props.onMenu(e.clientX, e.clientY);
       }}
       onDoubleClick={props.onOpen}
+      draggable={!!props.onDrag}
+      onDragStart={(e) => {
+        // Kein HTML-Drag: Windows übernimmt mit der echten Datei (DoDragDrop).
+        e.preventDefault();
+        props.onDrag?.();
+      }}
       aria-label={fileName(c.path)}
     >
       <div className={css.thumb}>

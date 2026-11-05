@@ -95,6 +95,7 @@ export function Gallery(props: { onOpen?: (clip: ClipEntry) => void }) {
               onAdopt={() => act(() => store.ipc.adoptClip(c.clip_id))}
               onOpen={() => c.status === "ok" && props.onOpen?.(c)}
               onMenu={(x, y) => setTimeout(() => setMenu({ clip: c, x, y }))}
+              onDrag={() => void store.ipc.startDrag(c.clip_id).catch((e) => store.notify(String((e as Error).message ?? e), "error"))}
             />
           ))}
         </div>

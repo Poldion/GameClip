@@ -100,6 +100,34 @@ pub async fn set_autostart(on: bool) -> Result<&'static str, String> {
     blocking(move || autostart_name(service::set_autostart(on))).await
 }
 
+/// Bild am Mauszeiger, wenn die Shell kein Vorschaubild liefert.
+const DRAG_FALLBACK_PNG: &[u8] = include_bytes!("../icons/128x128.png");
+
+/// Datei aus der Galerie ziehen. `DoDragDrop` braucht den Hauptthread mit seiner
+/// Nachrichtenschleife; der Befehl kehrt zurück, sobald das Ziehen begonnen hat.
+#[tauri::command]
+pub async fn start_drag(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    ipc: State<'_, Ipc>,
+    clip_id: u32,
+) -> Result<(), String> {
+    let ipc = ipc.inner().clone();
+    let (path, preview) = blocking(move || {
+        let path = clip_path(&ipc, clip_id)?;
+        let preview = gameclip_ui_platform::thumbnail::png(&path, 96)
+            .unwrap_or_else(|_| DRAG_FALLBACK_PNG.to_vec());
+        Ok::<_, String>((path, preview))
+    })
+    .await??;
+    app.run_on_main_thread(move || {
+        if let Err(e) = gameclip_ui_platform::drag::start(&window, &path, preview) {
+            tracing::warn!("Ziehen nicht möglich: {e}");
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn has_media_foundation() -> bool {
     media::has_media_foundation()

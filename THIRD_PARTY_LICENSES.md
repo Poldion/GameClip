@@ -10,7 +10,7 @@ im Paket unter `licenses/FFmpeg-LICENSE.txt`.
 
 ## Rust-Bibliotheken
 
-* MIT License (233)
+* MIT License (245)
 * Unicode License v3 (19)
 * GNU General Public License v3.0 or later (9)
 * Mozilla Public License 2.0 (5)
@@ -3313,6 +3313,7 @@ SOFTWARE.
 Verwendet von:
 * [brotli-decompressor 6.2.0](https://github.com/dropbox/rust-brotli-decompressor)
 * [dpi 0.1.2](https://github.com/rust-windowing/winit)
+* [drag 2.1.1](https://crates.io/crates/drag)
 * [tauri-plugin-dialog 2.8.4](https://github.com/tauri-apps/plugins-workspace)
 * [tauri-plugin-fs 2.7.1](https://github.com/tauri-apps/plugins-workspace)
 * [tauri-plugin-single-instance 2.5.5](https://github.com/tauri-apps/plugins-workspace)
@@ -3322,18 +3323,29 @@ Verwendet von:
 * [webview2-com-sys 0.39.1](https://github.com/wravery/webview2-rs)
 * [webview2-com 0.39.1](https://github.com/wravery/webview2-rs)
 * [windows-collections 0.3.2](https://github.com/microsoft/windows-rs)
+* [windows-core 0.52.0](https://github.com/microsoft/windows-rs)
+* [windows-core 0.58.0](https://github.com/microsoft/windows-rs)
 * [windows-core 0.62.2](https://github.com/microsoft/windows-rs)
 * [windows-future 0.3.2](https://github.com/microsoft/windows-rs)
+* [windows-implement 0.52.0](https://github.com/microsoft/windows-rs)
+* [windows-implement 0.58.0](https://github.com/microsoft/windows-rs)
 * [windows-implement 0.60.2](https://github.com/microsoft/windows-rs)
+* [windows-interface 0.52.0](https://github.com/microsoft/windows-rs)
+* [windows-interface 0.58.0](https://github.com/microsoft/windows-rs)
 * [windows-interface 0.59.3](https://github.com/microsoft/windows-rs)
 * [windows-link 0.2.1](https://github.com/microsoft/windows-rs)
 * [windows-numerics 0.3.1](https://github.com/microsoft/windows-rs)
+* [windows-result 0.2.0](https://github.com/microsoft/windows-rs)
 * [windows-result 0.4.1](https://github.com/microsoft/windows-rs)
+* [windows-strings 0.1.0](https://github.com/microsoft/windows-rs)
 * [windows-strings 0.5.1](https://github.com/microsoft/windows-rs)
 * [windows-sys 0.61.2](https://github.com/microsoft/windows-rs)
+* [windows-targets 0.52.6](https://github.com/microsoft/windows-rs)
 * [windows-threading 0.2.1](https://github.com/microsoft/windows-rs)
 * [windows-version 0.1.7](https://github.com/microsoft/windows-rs)
+* [windows 0.52.0](https://github.com/microsoft/windows-rs)
 * [windows 0.62.2](https://github.com/microsoft/windows-rs)
+* [windows_x86_64_msvc 0.52.6](https://github.com/microsoft/windows-rs)
 
 ```
 MIT License

@@ -5,6 +5,8 @@
 #[cfg(windows)]
 pub mod clipboard;
 #[cfg(windows)]
+pub mod drag;
+#[cfg(windows)]
 pub mod media;
 #[cfg(windows)]
 pub mod package;

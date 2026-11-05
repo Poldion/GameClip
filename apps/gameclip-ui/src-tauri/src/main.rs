@@ -118,6 +118,7 @@ fn main() {
             commands::get_autostart,
             commands::set_autostart,
             commands::has_media_foundation,
+            commands::start_drag,
             initial_view,
         ])
         .setup(move |app| {

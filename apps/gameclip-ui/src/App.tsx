@@ -8,6 +8,7 @@ import type { ClipEntry } from "./generated/ClipEntry";
 import { StatusBar } from "./components/StatusBar";
 import type { StartView } from "./ipc";
 import { useSelect, useStore } from "./store";
+import { Editor } from "./views/Editor";
 import { FirstRun } from "./views/FirstRun";
 import { Gallery } from "./views/Gallery";
 import { Settings } from "./views/Settings";
@@ -64,11 +65,7 @@ export function App() {
           <main className={css.main}>
             {view.name === "gallery" && <Gallery onOpen={(clip) => setView({ name: "editor", clip })} />}
             {view.name === "settings" && <Settings />}
-            {view.name === "editor" && (
-              <Full title="Editor folgt">
-                <button onClick={() => setView({ name: "gallery" })}>Zurück</button>
-              </Full>
-            )}
+            {view.name === "editor" && <Editor clip={view.clip} onBack={() => setView({ name: "gallery" })} />}
           </main>
         </>
       ) : (

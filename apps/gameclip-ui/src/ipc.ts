@@ -86,6 +86,10 @@ export interface Ipc {
   hasMediaFoundation(): Promise<boolean>;
   /** URL des Vorschaubilds (eigenes Protokoll `clip`). */
   thumbnailUrl(clipId: number): string;
+  /** URL der Datei für `<video>` (eigenes Protokoll `clip`, mit HTTP-Range). */
+  clipUrl(clipId: number): string;
+  /** Datei aus der Galerie ziehen (Drag-and-drop nach Discord oder in den Explorer). */
+  startDrag(clipId: number): Promise<void>;
   onEvent(cb: (ev: ServiceEvent) => void): Unsubscribe;
   onConnection(cb: (c: Connection) => void): Unsubscribe;
   connection(): Promise<Connection>;
@@ -102,7 +106,7 @@ export function makeIpc(
   send: (cmd: Command) => Promise<Response>,
   native: Pick<
     Ipc,
-    "copyFile" | "reveal" | "pickFolder" | "getAutostart" | "setAutostart" | "hasMediaFoundation" | "thumbnailUrl" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
+    "copyFile" | "reveal" | "pickFolder" | "getAutostart" | "setAutostart" | "hasMediaFoundation" | "thumbnailUrl" | "clipUrl" | "startDrag" | "onEvent" | "onConnection" | "connection" | "initialView" | "onOpenView"
   >,
 ): Ipc {
   async function call<T>(cmd: Command): Promise<T> {
@@ -173,6 +177,8 @@ async function tauriIpc(): Promise<Ipc> {
     setAutostart: (on) => invoke("set_autostart", { on }),
     hasMediaFoundation: () => invoke("has_media_foundation"),
     thumbnailUrl: (clipId) => `http://clip.localhost/thumb/${clipId}`,
+    clipUrl: (clipId) => `http://clip.localhost/${clipId}`,
+    startDrag: (clipId) => invoke("start_drag", { clipId }),
     onEvent: (cb) => sub<ServiceEvent>("service-event", cb),
     onConnection: (cb) => sub<Connection>("connection", cb),
     connection: () => invoke("connection"),

@@ -69,8 +69,10 @@ export interface MockState {
 }
 
 export function mockState(): MockState {
+  // `?ready` in der Adresse überspringt im Browser den ersten Start.
+  const ready = typeof location !== "undefined" && location.search.includes("ready");
   return {
-    settings: defaultSettings(),
+    settings: { ...defaultSettings(), first_run_done: ready },
     readOnly: false,
     clips: sampleClips(),
     exports: [],
@@ -270,6 +272,8 @@ export function createMockIpc(state: MockState = mockState()): Ipc & { state: Mo
     thumbnailUrl: () =>
       "data:image/svg+xml;utf8," +
       encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#3a3f4b"/></svg>'),
+    clipUrl: () => "",
+    startDrag: async () => {},
     onEvent: (cb) => {
       listeners.add(cb);
       return () => listeners.delete(cb);

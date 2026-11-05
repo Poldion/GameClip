@@ -1,0 +1,119 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(480px, 92vw);
+  padding: var(--space-5);
+  background: var(--surface);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow);
+}
+
+.dialog h2 {
+  font-size: var(--text-l);
+}
+
+.span {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.choices label {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  cursor: pointer;
+}
+
+.choices label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choices label[data-disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.choices span {
+  display: flex;
+  flex-direction: column;
+}
+
+.choices small {
+  color: var(--text-2);
+}
+
+.size input {
+  width: 80px;
+}
+
+.estimate {
+  margin: var(--space-2) 0 0;
+  min-height: 1.4em;
+  color: var(--text-2);
+}
+
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 150ms linear;
+}
+
+.state {
+  margin: 0;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ok {
+  margin: 0;
+  color: var(--ok);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-s);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

@@ -1509,6 +1509,12 @@ Jeder Eintrag nennt die Änderungen; Art und Begründung stehen dort, wo sie nic
     *   `ExportDialog`: Mischung (Standard) / Getrennte Spuren / Zielgröße (MB-Feld); vorab `GetExportEstimate` mit Warnung; Fortschritt, Encoder („Export über CPU“), Abbrechen; eingereihte Aufträge aus `ListJobs` als „wartet“.
     *   `HotkeyPicker`: `SuspendHotkey{on: true}`, liest `KeyboardEvent.code` plus Modifier, Auswahlliste für F13–F24, `TestRegister`, Warnung; bei Bestätigen `SetSettings{hotkey}`, dann `SuspendHotkey{on: false}`.
     *   `VolumeSlider`: −30 bis +12 dB, Doppelklick → 0 dB. `ForecastLabel`: „ca. N MB RAM“ aus `total_bytes` und Warnstufe.
+*   **Umgesetzt 2026-11 (M2/M3):**
+    *   `timeline.ts` nimmt 1 ms Spielraum, weil `currentTime` als Gleitkommazahl knapp vor einer ganzzahligen Bildzeit liegen kann. Gespult wird auf die Bildzeit plus höchstens 1 ms (`seekTimeForFrame`), damit jeder Browser im gewünschten Bild landet.
+    *   `TrimBar`: Griffe per Zeiger und mit ←/→ am Griff (Umschalt: zehn Bilder). Der Editor nutzt ←/→ ohne Fokus auf einem Griff als Bildschritt, I/O setzt Start und Ende, Leertaste spielt ab.
+    *   `ExportDialog` hört selbst auf `JobCompleted`/`JobFailed` seines Auftrags und bietet danach „Kopieren“ und „Im Ordner anzeigen“ an.
+    *   `VolumeSlider` speichert erst beim Loslassen (`onCommit`); die Mischung übernimmt neue Lautstärken ohne Neustart (`AudioPipeline::set_gains_db`).
+    *   Drag-and-drop: Die Kachel startet kein HTML-Drag, sondern `start_drag`. Der Befehl holt Pfad und Vorschaubild und ruft `gameclip-ui-platform::drag::start` (Crate `drag`, `DoDragDrop`) auf dem Hauptthread auf.
 
 ##### 66. `apps/gameclip-ui/src/styles/tokens.css`, `src/**/*.module.css` (Create)
 

@@ -8,8 +8,10 @@ repository.workspace = true
 
 [dependencies]
 crossbeam-channel.workspace = true
+drag = "2"
 gameclip-core.workspace = true
 gameclip-protocol.workspace = true
+raw-window-handle = "0.6"
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
